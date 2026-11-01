@@ -7,12 +7,9 @@ def main():
     parser.add_argument("--transport", choices=["stdio", "http", "sse"], default="stdio")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8100)
-    parser.add_argument("--url", default=os.environ.get("PREDICTORLAB_URL", "http://localhost:8000"),
-                        help="База REST API PredictorLab")
-    parser.add_argument("--api-key", default=os.environ.get("PREDICTORLAB_API_KEY", ""),
-                        help="API-ключ pl_live_… (или переменная PREDICTORLAB_API_KEY)")
-    parser.add_argument("--auth-token", default=os.environ.get("PREDICTORLAB_MCP_AUTH_TOKEN", ""),
-                        help="Bearer-токен самого MCP-сервера (для http-транспорта)")
+    parser.add_argument("--url", default=os.environ.get("PREDICTORLAB_URL", "http://localhost:8000"), help="База REST API PredictorLab")
+    parser.add_argument("--api-key", default=os.environ.get("PREDICTORLAB_API_KEY", ""), help="API-ключ pl_live_… (или переменная PREDICTORLAB_API_KEY)")
+    parser.add_argument("--auth-token", default=os.environ.get("PREDICTORLAB_MCP_AUTH_TOKEN", ""), help="Bearer-токен самого MCP-сервера (для http-транспорта)")
     args = parser.parse_args()
 
     os.environ["PREDICTORLAB_URL"] = args.url
@@ -43,6 +40,7 @@ def main():
         app = mcp.sse_app()
     app.add_middleware(BearerMiddleware)
     import uvicorn
+
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 

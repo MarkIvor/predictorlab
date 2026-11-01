@@ -1,4 +1,5 @@
 import uuid
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -39,9 +40,14 @@ def load_bundle(version_id: int, dir_rel: str) -> dict:
     bg_path = vdir / "shap_background.parquet"
     bg = pd.read_parquet(bg_path) if bg_path.exists() else None
     bundle = {
-        "pipeline": pipeline, "conformal": conformal, "ood": ood,
-        "schema": schema, "metrics": metrics, "background": bg,
-        "dir": str(vdir), "explainer": None,
+        "pipeline": pipeline,
+        "conformal": conformal,
+        "ood": ood,
+        "schema": schema,
+        "metrics": metrics,
+        "background": bg,
+        "dir": str(vdir),
+        "explainer": None,
     }
     if len(_cache) > 20:
         _cache.clear()
@@ -49,7 +55,7 @@ def load_bundle(version_id: int, dir_rel: str) -> dict:
     return bundle
 
 
-def invalidate_cache():
+def invalidate_cache() -> None:
     _cache.clear()
 
 
@@ -88,7 +94,7 @@ def validate_record(record: dict, schema: dict) -> tuple[dict, list[str]]:
             else:
                 clean[k] = str(v)
         except (ValueError, TypeError):
-            raise ValidationError(f"Поле «{k}»: ожидается {p['type']}, получено «{v}»")
+            raise ValidationError(f"Поле «{k}»: ожидается {p['type']}, получено «{v}»") from None
     return clean, warnings
 
 
@@ -130,14 +136,15 @@ def _num_matrix(bundle: dict, df_raw: pd.DataFrame) -> pd.DataFrame:
 def _ood_flags(bundle: dict, df_raw: pd.DataFrame) -> list[bool]:
     try:
         X_num = _num_matrix(bundle, df_raw)
-        return ood_mod.ood_scores(bundle["ood"], X_num.to_numpy(dtype=float)) < bundle["ood"]["threshold"]
+        return [bool(v < bundle["ood"]["threshold"]) for v in ood_mod.ood_scores(bundle["ood"], X_num.to_numpy(dtype=float))]
     except Exception:
         return [False] * len(df_raw)
 
 
-def _get_explainer(bundle: dict):
+def _get_explainer(bundle: dict) -> Any:
     if bundle["explainer"] is None:
         import shap
+
         pipeline = bundle["pipeline"]
         est = pipeline["estimator"]
         if pipeline["kind"] == "ensemble":
@@ -154,6 +161,7 @@ def _reasons(bundle: dict, df_raw: pd.DataFrame, row_i: int, top: int = 5) -> li
     row = X.iloc[[row_i]]
     if kind == "linear":
         from app.core.explain.shap_explainer import _linear_shap
+
         sh = _linear_shap(pipeline, bundle["background"], row).ravel()
     else:
         explainer = _get_explainer(bundle)
@@ -165,11 +173,12 @@ def _reasons(bundle: dict, df_raw: pd.DataFrame, row_i: int, top: int = 5) -> li
             sh = sh[0, :, -1]
         sh = sh.ravel()
     from app.core.explain.shap_explainer import local_reasons
+
     values = {c: df_raw.iloc[row_i].get(c) for c in df_raw.columns}
     return local_reasons(sh, spec["feature_cols"], values, top=top)
 
 
-def _reason_text(feature: str, value, impact: float, task: str, classes: list | None) -> str:
+def _reason_text(feature: str, value: Any, impact: float, task: str, classes: list | None) -> str:
     val_str = value
     if isinstance(value, float):
         val_str = round(value, 2)
@@ -181,8 +190,7 @@ def _reason_text(feature: str, value, impact: float, task: str, classes: list | 
     return f"{src} = {val_str}: {sign}{abs(impact):.2f} к прогнозу"
 
 
-def predict_records(bundle: dict, records: list[dict], threshold: float | None = None,
-                    include_reasons: bool = False) -> tuple[list[dict], list[str]]:
+def predict_records(bundle: dict, records: list[dict], threshold: float | None = None, include_reasons: bool = False) -> tuple[list[dict], list[str]]:
     task = bundle["pipeline"]["task_type"]
     classes = bundle["pipeline"].get("classes")
     calibrator = bundle["pipeline"].get("calibrator")
@@ -210,27 +218,31 @@ def predict_records(bundle: dict, records: list[dict], threshold: float | None =
         if task == "regression":
             pred = float(matrix[i])
             lo, hi = conf.regression_interval(pred, conformal)
-            out.update({
-                "prediction": round(pred, 4),
-                "interval_low": round(lo, 4),
-                "interval_high": round(hi, 4),
-                "conformal": {"coverage": conformal.get("alpha", 0.9)},
-            })
+            out.update(
+                {
+                    "prediction": round(pred, 4),
+                    "interval_low": round(lo, 4),
+                    "interval_high": round(hi, 4),
+                    "conformal": {"coverage": conformal.get("alpha", 0.9)},
+                }
+            )
         elif task == "binary":
             p_raw = float(matrix[i][1])
             p = float(apply_calibration(calibrator, np.array([p_raw]))[0]) if calibrator else p_raw
             pred_set = conf.predict_set(np.array([1 - p_raw, p_raw]), conformal, classes)
             label = classes[1] if p >= thr else classes[0]
-            out.update({
-                "label": str(label),
-                "probability": round(p, 4),
-                "decision": bool(p >= thr),
-                "threshold": thr,
-                "conformal": {
-                    "coverage": conformal.get("alpha", 0.9),
-                    "prediction_set": [str(c) for c in pred_set],
-                },
-            })
+            out.update(
+                {
+                    "label": str(label),
+                    "probability": round(p, 4),
+                    "decision": bool(p >= thr),
+                    "threshold": thr,
+                    "conformal": {
+                        "coverage": conformal.get("alpha", 0.9),
+                        "prediction_set": [str(c) for c in pred_set],
+                    },
+                }
+            )
             if len(pred_set) != 1:
                 out["confidence_note"] = "Модель неуверенно разделяет классы — смотрите множество прогноза"
         else:
@@ -238,14 +250,16 @@ def predict_records(bundle: dict, records: list[dict], threshold: float | None =
             k = len(proba)
             pred_set = conf.predict_set(proba, conformal, list(range(k)))
             best = int(np.argmax(proba))
-            out.update({
-                "label": str(classes[best]) if classes else str(best),
-                "probability": round(float(proba[best]), 4),
-                "conformal": {
-                    "coverage": conformal.get("alpha", 0.9),
-                    "prediction_set": [str(classes[int(c)]) if classes else str(c) for c in pred_set],
-                },
-            })
+            out.update(
+                {
+                    "label": str(classes[best]) if classes else str(best),
+                    "probability": round(float(proba[best]), 4),
+                    "conformal": {
+                        "coverage": conformal.get("alpha", 0.9),
+                        "prediction_set": [str(classes[int(c)]) if classes else str(c) for c in pred_set],
+                    },
+                }
+            )
         if include_reasons:
             reasons = _reasons(bundle, df_raw, i)
             for r in reasons:
@@ -253,4 +267,5 @@ def predict_records(bundle: dict, records: list[dict], threshold: float | None =
             out["top_reasons"] = reasons
         results.append(out)
     from app.services.jsonsafe import json_safe
+
     return json_safe(results), all_warnings

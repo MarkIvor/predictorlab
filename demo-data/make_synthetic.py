@@ -1,4 +1,5 @@
 """Детерминированный генератор демо-данных PredictorLab. Сид фиксирован — данные воспроизводимы."""
+
 import argparse
 from pathlib import Path
 
@@ -44,24 +45,26 @@ def make_flat(seed: int = 42, n: int = 24000) -> pd.DataFrame:
     event_date = rng.choice(months, size=n)
     support_email = [f"client{i}@company{i % 977}.ru" for i in range(1, n + 1)]
 
-    df = pd.DataFrame({
-        "customer_id": customer_id,
-        "segment": segment,
-        "region": region,
-        "age_years": age_years,
-        "discount_pct": discount_pct,
-        "manager_rating": manager_rating,
-        "complaints_90d": complaints_90d,
-        "satisfaction": satisfaction,
-        "orders_count_90d": orders_count_90d,
-        "orders_sum_90d": orders_sum_90d,
-        "orders_sum_30d": orders_sum_30d,
-        "days_since_last_order": days_since_last_order,
-        "tickets_90d": tickets_90d,
-        "event_date": event_date,
-        "support_email": support_email,
-        "churn": churn,
-    })
+    df = pd.DataFrame(
+        {
+            "customer_id": customer_id,
+            "segment": segment,
+            "region": region,
+            "age_years": age_years,
+            "discount_pct": discount_pct,
+            "manager_rating": manager_rating,
+            "complaints_90d": complaints_90d,
+            "satisfaction": satisfaction,
+            "orders_count_90d": orders_count_90d,
+            "orders_sum_90d": orders_sum_90d,
+            "orders_sum_30d": orders_sum_30d,
+            "days_since_last_order": days_since_last_order,
+            "tickets_90d": tickets_90d,
+            "event_date": event_date,
+            "support_email": support_email,
+            "churn": churn,
+        }
+    )
     return df
 
 
@@ -82,10 +85,15 @@ def make_relational(seed: int = 44, n_customers: int = 9000) -> dict[str, pd.Dat
     region = rng.choice(["Москва", "СПб", "Екатеринбург", "Другой"], size=n_customers, p=[0.4, 0.25, 0.15, 0.2])
     signup = pd.date_range("2022-01-01", "2023-06-30").to_series().sample(n_customers, replace=True, random_state=seed).reset_index(drop=True)
     discount_pct = np.clip(rng.normal(6, 4, size=n_customers), 0, 25).round(1)
-    customers = pd.DataFrame({
-        "customer_id": customer_id, "segment": segment, "region": region,
-        "signup_date": signup.astype(str), "discount_pct": discount_pct,
-    })
+    customers = pd.DataFrame(
+        {
+            "customer_id": customer_id,
+            "segment": segment,
+            "region": region,
+            "signup_date": signup.astype(str),
+            "discount_pct": discount_pct,
+        }
+    )
 
     orders_rows = []
     tickets_rows = []
@@ -102,8 +110,7 @@ def make_relational(seed: int = 44, n_customers: int = 9000) -> dict[str, pd.Dat
             if order_date > pd.Timestamp("2025-08-31"):
                 continue
             amount = float(np.round(rng.lognormal(5.4, 0.5), 0))
-            orders_rows.append({"order_id": f"O{order_seq}", "customer_id": cid,
-                                "order_date": str(order_date.date()), "amount": amount})
+            orders_rows.append({"order_id": f"O{order_seq}", "customer_id": cid, "order_date": str(order_date.date()), "amount": amount})
         n_tickets = int(rng.poisson(1.2))
         for _ in range(n_tickets):
             ticket_seq += 1
@@ -111,9 +118,14 @@ def make_relational(seed: int = 44, n_customers: int = 9000) -> dict[str, pd.Dat
             created = base + pd.Timedelta(days=days)
             if created > pd.Timestamp("2025-08-31"):
                 continue
-            tickets_rows.append({"ticket_id": f"T{ticket_seq}", "customer_id": cid,
-                                 "created_at": str(created.date()),
-                                 "priority": str(rng.choice(["low", "normal", "high"], p=[0.5, 0.4, 0.1]))})
+            tickets_rows.append(
+                {
+                    "ticket_id": f"T{ticket_seq}",
+                    "customer_id": cid,
+                    "created_at": str(created.date()),
+                    "priority": str(rng.choice(["low", "normal", "high"], p=[0.5, 0.4, 0.1])),
+                }
+            )
     orders = pd.DataFrame(orders_rows)
     tickets = pd.DataFrame(tickets_rows)
     return {"customers": customers, "orders": orders, "tickets": tickets}
@@ -135,8 +147,10 @@ def main():
     rel = make_relational(args.seed + 2)
     for name, df in rel.items():
         df.to_csv(out / f"rel_{name}.csv", index=False, encoding="utf-8")
-    print(f"flat={len(flat)} leaky={len(leaky)} customers={len(rel['customers'])} "
-          f"orders={len(rel['orders'])} tickets={len(rel['tickets'])} churn_rate={flat['churn'].mean():.3f}")
+    print(
+        f"flat={len(flat)} leaky={len(leaky)} customers={len(rel['customers'])} "
+        f"orders={len(rel['orders'])} tickets={len(rel['tickets'])} churn_rate={flat['churn'].mean():.3f}"
+    )
 
 
 if __name__ == "__main__":

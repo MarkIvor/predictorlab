@@ -46,9 +46,7 @@ def psi_frame(reference: pd.DataFrame, current: pd.DataFrame, categorical: list[
             out[col] = psi_categorical(reference[col], current[col])
         else:
             try:
-                out[col] = psi_numeric(
-                    pd.to_numeric(reference[col], errors="coerce").to_numpy(),
-                    pd.to_numeric(current[col], errors="coerce").to_numpy())
+                out[col] = psi_numeric(pd.to_numeric(reference[col], errors="coerce").to_numpy(), pd.to_numeric(current[col], errors="coerce").to_numpy())
             except (TypeError, ValueError):
                 out[col] = None
     return out

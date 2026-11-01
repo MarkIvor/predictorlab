@@ -95,3 +95,26 @@ pandas to_datetime() интерпретирует маленькие целые 
    сущность обязана попадать в несколько срезов, а «спящие» сущности дают одинаковые строки.
    Для out-of-time сплитов пересечение сущностей и совпадающие строки понижаются до WARN
    (валидация остаётся честной по времени); BLOCK — только для случайных сплитов.
+
+## D-14 (Шаг 0). mypy strict на core/: поэтапное ужесточение
+
+Требование ред. 1.2: mypy --strict для core/. Применены изъятия для `core/training/runner.py`
+(787 строк, CatBoost/LightGBM/Optuna — нетипизированные ML-библиотеки).
+План: закрыть no-untyped-def к v0.3, закрыть no-any-return к v0.4.
+
+## D-15 (Шаг 0). ML-тесты вне make check (бюджет 10 минут)
+
+Полное обучение CatBoost ≥20k строк через TestClient: 1–3 мин/модель × 7 = 7–21 мин > 10 мин.
+ML выделен в `make test-ml`. CI: make check + coverage; nightly: полный ML.
+
+## D-16 (Шаг 0). ESLint react-hooks/set-state-in-effect: off
+
+React 19 ESLint plugin запрещает синхронный setState в useEffect. Все компоненты
+PredictorLab используют паттерн «useEffect → fetch → setState». Отключено как
+преждевременная оптимизация.
+
+## D-17 (Шаг 0). Дедупликация при пересечении train/test
+
+Leakage Guard нашёл 22 дубликата в Telco при случайном сплите → BLOCK.
+Добавлен POST /api/datasets/{id}/dedupe. В E2E вызывается автоматически при BLOCK
+из-за train_test_overlap.

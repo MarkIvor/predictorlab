@@ -1,8 +1,7 @@
-import json
 import logging
 import platform
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import numpy as np
 import pandas as pd
@@ -31,7 +30,7 @@ from app.core.training import preprocess as prep
 from app.core.training import splits as splits_mod
 from app.core.uncertainty import conformal as conf
 from app.core.uncertainty import ood as ood_mod
-from app.models.database import Dataset, Job, Model, ModelVersion, SessionLocal, utcnow
+from app.models.database import Dataset, Job, Model, ModelVersion, SessionLocal
 
 logger = logging.getLogger("predictorlab.train")
 
@@ -40,6 +39,7 @@ METRIC_DIRECTION = {"binary": "maximize", "multiclass": "maximize", "regression"
 
 def _emit(job_id: str, ev_type: str, data: dict):
     from app.models.database import JobEvent
+
     db = SessionLocal()
     try:
         db.add(JobEvent(job_id=job_id, type=ev_type, data=data))
@@ -73,6 +73,7 @@ def _cancelled(job_id: str) -> bool:
 def _lib_version(name: str) -> str:
     try:
         import importlib.metadata
+
         return importlib.metadata.version(name)
     except Exception:
         return "unknown"
@@ -148,6 +149,7 @@ def run(job_id: str):
 
     if task_type == "timeseries":
         from app.core.training import ts
+
         ts.run(job_id, model_id, dataset_ref, mode)
         return
 
@@ -162,23 +164,22 @@ def run(job_id: str):
     X = prep.transform(df, spec)
     y, target_info = prep.encode_target(df[target_col], task_type)
 
-    plan = splits_mod.make_splits(df, target_col, task_type, dataset.event_time_col, dataset.entity_col,
-                                  seed=settings.seed)
+    plan = splits_mod.make_splits(df, target_col, task_type, dataset.event_time_col, dataset.entity_col, seed=settings.seed)
     _emit(job_id, "stage", {"stage": "split", "message": f"Сплит: {plan.kind}", "split": plan.to_dict()})
     _progress(job_id, stage="split", split=plan.to_dict())
 
-    split_guard = guard_checks.run_split_checks(df, prep.source_columns(spec), target_col,
-                                                np.array(plan.train_idx), np.array(plan.holdout_idx),
-                                                dataset.entity_col, split_kind=plan.kind)
+    split_guard = guard_checks.run_split_checks(
+        df, prep.source_columns(spec), target_col, np.array(plan.train_idx), np.array(plan.holdout_idx), dataset.entity_col, split_kind=plan.kind
+    )
     if split_guard["verdict"] == "BLOCK" and not guard_override:
         raise RuntimeError("Leakage Guard: BLOCK — " + "; ".join(c["detail"] for c in split_guard["checks"]))
 
     train_idx = np.array(plan.train_idx)
     holdout_idx = np.array(plan.holdout_idx)
-    calib_idx = np.array(plan.calib_idx) if plan.calib_idx else train_idx[-max(1, len(train_idx) // 10):]
+    calib_idx = np.array(plan.calib_idx) if plan.calib_idx else train_idx[-max(1, len(train_idx) // 10) :]
     fit_idx = np.setdiff1d(train_idx, calib_idx)
 
-    X_tr, y_tr = X.iloc[fit_idx], y[fit_idx]
+    X_tr, _y_tr = X.iloc[fit_idx], y[fit_idx]
     X_cal, y_cal = X.iloc[calib_idx], y[calib_idx]
     X_ho, y_ho = X.iloc[holdout_idx], y[holdout_idx]
 
@@ -188,7 +189,7 @@ def run(job_id: str):
     def cv_evaluate(kind: str, est, spec_local, name: str, params: dict) -> dict:
         oof = np.full(len(y), np.nan)
         fold_metrics = []
-        for fold_no, (tr_i, va_i) in enumerate(plan.cv):
+        for _fold_no, (tr_i, va_i) in enumerate(plan.cv):
             if _cancelled(job_id):
                 raise _Cancelled()
             tr_i, va_i = np.array(tr_i), np.array(va_i)
@@ -204,14 +205,21 @@ def run(job_id: str):
                 oof[va_i] = np.asarray(proba)[:, -1]
             fold_metrics.append(_fold_metric(task_type, y[va_i], proba))
         cv_metric = float(np.mean(fold_metrics))
-        candidates_results.append({
-            "name": name, "kind": kind, "params": _short_params(params),
-            "cv_metric": cv_metric, "fold_metrics": [round(m, 6) for m in fold_metrics],
-        })
+        candidates_results.append(
+            {
+                "name": name,
+                "kind": kind,
+                "params": _short_params(params),
+                "cv_metric": cv_metric,
+                "fold_metrics": [round(m, 6) for m in fold_metrics],
+            }
+        )
         oof_store[name] = (oof, params, kind)
-        _emit(job_id, "candidate", {"candidate": name, "cv_metric": round(cv_metric, 6),
-                                    "fold_metrics": [round(m, 6) for m in fold_metrics],
-                                    "leaderboard": _leaderboard()})
+        _emit(
+            job_id,
+            "candidate",
+            {"candidate": name, "cv_metric": round(cv_metric, 6), "fold_metrics": [round(m, 6) for m in fold_metrics], "leaderboard": _leaderboard()},
+        )
         _progress(job_id, leader=_leaderboard()[0] if candidates_results else None)
         return candidates_results[-1]
 
@@ -229,8 +237,14 @@ def run(job_id: str):
         logger.warning("linear candidate failed: %s", exc)
 
     if mode == "quick":
-        cb_params = {"iterations": settings.quick_iterations, "depth": 6, "learning_rate": 0.1,
-                     "random_seed": settings.seed, "verbose": False, "thread_count": -1}
+        cb_params = {
+            "iterations": settings.quick_iterations,
+            "depth": 6,
+            "learning_rate": 0.1,
+            "random_seed": settings.seed,
+            "verbose": False,
+            "thread_count": -1,
+        }
         cb = cand.build_catboost(task_type, spec, cb_params)
         cand.fit_cat_levels(X_tr, spec)
         cv_evaluate("catboost", cb, spec, "catboost", cb_params)
@@ -265,13 +279,11 @@ def run(job_id: str):
                     if best_w is None or metric > best_metric:
                         best_w, best_metric = float(w), float(metric)
         if best_w is not None:
-            ensemble_info = {"members": [a_name, b_name], "weights": [best_w, round(1 - best_w, 3)],
-                            "cv_metric": round(best_metric, 6)}
+            ensemble_info = {"members": [a_name, b_name], "weights": [best_w, round(1 - best_w, 3)], "cv_metric": round(best_metric, 6)}
             _emit(job_id, "ensemble", {"ensemble": ensemble_info})
 
     _emit(job_id, "stage", {"stage": "final_fit", "message": "Финальное обучение"})
-    pipeline, final_kind, final_params = _final_fit(task_type, spec, best, oof_store, ensemble_info,
-                                                    X.iloc[fit_idx], y[fit_idx])
+    pipeline, final_kind, final_params = _final_fit(task_type, spec, best, oof_store, ensemble_info, X.iloc[fit_idx], y[fit_idx])
 
     calibrator = None
     if task_type == "binary" and len(np.unique(y_cal)) >= 2:
@@ -279,16 +291,17 @@ def run(job_id: str):
         method = payload.get("calibration", "auto")
         calibrator = calib_mod.fit_calibration(proba_raw, y_cal, method)
         proba_cal = calib_mod.apply_calibration(calibrator, proba_raw)
-        _emit(job_id, "stage", {"stage": "calibration",
-                                "message": f"Калибровка: {calibrator.get('kind')}, Brier {calib_mod.brier_score(proba_cal, y_cal):.4f}"})
+        _emit(
+            job_id, "stage", {"stage": "calibration", "message": f"Калибровка: {calibrator.get('kind')}, Brier {calib_mod.brier_score(proba_cal, y_cal):.4f}"}
+        )
     elif task_type == "binary":
-        _emit(job_id, "stage", {"stage": "calibration",
-                                "message": "Калибровочный фолд содержит один класс — вероятности остаются некалиброванными"})
+        _emit(job_id, "stage", {"stage": "calibration", "message": "Калибровочный фолд содержит один класс — вероятности остаются некалиброванными"})
 
     _emit(job_id, "stage", {"stage": "uncertainty", "message": "Конформальные интервалы и OOD-детектор"})
     if task_type == "regression":
-        preds_cal = pipeline.predict(X_cal) if (ensemble_info or final_kind == "ensemble") else \
-            _estimator_predict_matrix(final_kind, pipeline, spec, X_cal, task_type)
+        preds_cal = (
+            pipeline.predict(X_cal) if (ensemble_info or final_kind == "ensemble") else _estimator_predict_matrix(final_kind, pipeline, spec, X_cal, task_type)
+        )
         conformal = conf.calibrate_regression(np.asarray(preds_cal).ravel(), y_cal, alpha=0.9)
         conformal["classes"] = None
     else:
@@ -296,29 +309,49 @@ def run(job_id: str):
         if len(np.unique(y_cal)) >= 2:
             conformal = conf.calibrate_classification(proba_full_cal, y_cal.astype(int), alpha=0.9)
         else:
-            conformal = {"alpha": 0.9, "q": 0.1, "method": "aps", "n_calib": len(y_cal),
-                         "k": proba_full_cal.shape[1], "degenerate": "калибровочный фолд содержит один класс"}
+            conformal = {
+                "alpha": 0.9,
+                "q": 0.1,
+                "method": "aps",
+                "n_calib": len(y_cal),
+                "k": proba_full_cal.shape[1],
+                "degenerate": "калибровочный фолд содержит один класс",
+            }
 
     num_cols = [c for c in spec["feature_cols"] if c not in spec.get("categorical", [])]
     ood = ood_mod.fit_ood(X_tr[num_cols].to_numpy(dtype=float), seed=settings.seed)
 
     _emit(job_id, "stage", {"stage": "evaluate", "message": "Оценка на holdout"})
-    metrics, holdout_frame = _evaluate(task_type, pipeline, final_kind, spec, ensemble_info, calibrator,
-                                       conformal, ood, X_ho, y_ho, df, holdout_idx, target_col,
-                                       dataset, plan, num_cols, target_info)
+    metrics, holdout_frame = _evaluate(
+        task_type,
+        pipeline,
+        final_kind,
+        spec,
+        ensemble_info,
+        calibrator,
+        conformal,
+        ood,
+        X_ho,
+        y_ho,
+        df,
+        holdout_idx,
+        target_col,
+        dataset,
+        plan,
+        num_cols,
+        target_info,
+    )
 
     _emit(job_id, "stage", {"stage": "explain", "message": "SHAP-объяснения"})
     X_bg_df = df.iloc[fit_idx]
     X_bg = prep.transform(X_bg_df, spec)
     bg = shap_explainer.make_background(X_bg, y[fit_idx], seed=settings.seed)
-    shap_bg_path = None
     try:
         shap_values = shap_explainer.shap_matrix(
-            {"kind": "ensemble" if ensemble_info else final_kind, "estimator": pipeline, "spec": spec},
-            bg, X_ho.head(2000))
+            {"kind": "ensemble" if ensemble_info else final_kind, "estimator": pipeline, "spec": spec}, bg, X_ho.head(2000)
+        )
         drivers = shap_explainer.global_drivers(shap_values, spec["feature_cols"])
-        dependence = {f: shap_explainer.dependence_data(X_ho, shap_values, f) for f in
-                      [d["feature"] for d in drivers[:5]]}
+        dependence = {f: shap_explainer.dependence_data(X_ho, shap_values, f) for f in [d["feature"] for d in drivers[:5]]}
     except Exception as exc:
         logger.warning("shap failed: %s", exc)
         shap_values, drivers, dependence = None, [], {}
@@ -345,17 +378,22 @@ def run(job_id: str):
         vdir.mkdir(parents=True, exist_ok=True)
 
         classes = target_info.get("classes")
-        artifacts.save_joblib(vdir, "pipeline.joblib", {
-            "kind": "ensemble" if ensemble_info else final_kind,
-            "estimator": pipeline,
-            "spec": spec, "task_type": task_type,
-            "classes": classes,
-            "calibrator": calibrator,
-            "params": final_params,
-            "members": ensemble_info["members"] if ensemble_info else None,
-            "member_kinds": _member_kinds(ensemble_info, oof_store) if ensemble_info else None,
-            "weights": ensemble_info["weights"] if ensemble_info else None,
-        })
+        artifacts.save_joblib(
+            vdir,
+            "pipeline.joblib",
+            {
+                "kind": "ensemble" if ensemble_info else final_kind,
+                "estimator": pipeline,
+                "spec": spec,
+                "task_type": task_type,
+                "classes": classes,
+                "calibrator": calibrator,
+                "params": final_params,
+                "members": ensemble_info["members"] if ensemble_info else None,
+                "member_kinds": _member_kinds(ensemble_info, oof_store) if ensemble_info else None,
+                "weights": ensemble_info["weights"] if ensemble_info else None,
+            },
+        )
         artifacts.save_joblib(vdir, "conformal.joblib", conformal)
         artifacts.save_joblib(vdir, "ood.joblib", ood)
         holdout_frame.to_parquet(vdir / "holdout_preds.parquet", index=False)
@@ -373,15 +411,21 @@ def run(job_id: str):
         if getattr(dataset, "feature_sql", None):
             (vdir / "feature_sql.sql").write_text(dataset.feature_sql, encoding="utf-8")
         manifest = {
-            "model_id": model_id, "version": version, "task_type": task_type, "mode": mode,
-            "seed": settings.seed, "deterministic": settings.deterministic,
-            "data_hash": db_dataset.data_hash, "nrows": int(len(df)),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "split": plan.to_dict(), "candidates": candidates_results, "ensemble": ensemble_info,
+            "model_id": model_id,
+            "version": version,
+            "task_type": task_type,
+            "mode": mode,
+            "seed": settings.seed,
+            "deterministic": settings.deterministic,
+            "data_hash": db_dataset.data_hash,
+            "nrows": int(len(df)),
+            "created_at": datetime.now(UTC).isoformat(),
+            "split": plan.to_dict(),
+            "candidates": candidates_results,
+            "ensemble": ensemble_info,
             "budget_sec": settings.train_time_budget_sec if mode == "full" else None,
             "used_sec": round(used_sec, 1),
-            "libraries": {lib: _lib_version(lib) for lib in
-                          ("fastapi", "scikit-learn", "catboost", "lightgbm", "optuna", "shap", "numpy", "pandas")},
+            "libraries": {lib: _lib_version(lib) for lib in ("fastapi", "scikit-learn", "catboost", "lightgbm", "optuna", "shap", "numpy", "pandas")},
             "python": platform.python_version(),
             "calibration": {"kind": calibrator["kind"]} if calibrator else None,
             "threshold": (threshold_info or {}).get("threshold"),
@@ -390,13 +434,19 @@ def run(job_id: str):
         artifacts.write_manifest(vdir, manifest)
 
         mv = ModelVersion(
-            model_id=model_id, version=version, dir_path=str(vdir.relative_to(settings.storage_path)),
-            manifest=manifest, metrics=metrics, leakage_report=leakage_report,
-            guard_override=guard_override, status="ready",
+            model_id=model_id,
+            version=version,
+            dir_path=str(vdir.relative_to(settings.storage_path)),
+            manifest=manifest,
+            metrics=metrics,
+            leakage_report=leakage_report,
+            guard_override=guard_override,
+            status="ready",
         )
         db.add(mv)
         db.flush()
         from app.core.registry.modelcard import build_card_md
+
         mv.card_md = build_card_md(db_model, db_dataset, mv, metrics, manifest, leakage_report, threshold_info)
         db_model.status = "ready"
         db_model.active_version_id = mv.id
@@ -408,9 +458,17 @@ def run(job_id: str):
     finally:
         db.close()
 
-    _emit(job_id, "stage", {"stage": "done", "message": "Модель обучена",
-                           "metrics": {k: v for k, v in metrics.items() if k in ("roc_auc", "pr_auc", "mae", "rmse", "r2", "coverage", "lift")},
-                           "version": version, "version_id": version_row_id})
+    _emit(
+        job_id,
+        "stage",
+        {
+            "stage": "done",
+            "message": "Модель обучена",
+            "metrics": {k: v for k, v in metrics.items() if k in ("roc_auc", "pr_auc", "mae", "rmse", "r2", "coverage", "lift")},
+            "version": version,
+            "version_id": version_row_id,
+        },
+    )
     _progress(job_id, stage="done", version=version, metrics=metrics)
     return {"version": version, "version_id": version_row_id}
 
@@ -437,6 +495,7 @@ def _short_params(p: dict) -> dict:
 
 def _run_optuna(job_id, task_type, spec, plan, X, y, settings, cv_evaluate):
     import optuna
+
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     direction = METRIC_DIRECTION[task_type]
 
@@ -448,7 +507,9 @@ def _run_optuna(job_id, task_type, spec, plan, X, y, settings, cv_evaluate):
                 "depth": trial.suggest_int("depth", 4, 8),
                 "learning_rate": trial.suggest_float("learning_rate", 0.03, 0.2, log=True),
                 "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1.0, 10.0, log=True),
-                "random_seed": settings.seed, "verbose": False, "thread_count": -1,
+                "random_seed": settings.seed,
+                "verbose": False,
+                "thread_count": -1,
             }
         else:
             params = {
@@ -456,7 +517,9 @@ def _run_optuna(job_id, task_type, spec, plan, X, y, settings, cv_evaluate):
                 "num_leaves": trial.suggest_int("num_leaves", 15, 127),
                 "learning_rate": trial.suggest_float("learning_rate", 0.03, 0.2, log=True),
                 "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
-                "random_state": settings.seed, "verbose": -1, "n_jobs": -1,
+                "random_state": settings.seed,
+                "verbose": -1,
+                "n_jobs": -1,
             }
         return family, params
 
@@ -483,8 +546,7 @@ def _run_optuna(job_id, task_type, spec, plan, X, y, settings, cv_evaluate):
     sampler = optuna.samplers.TPESampler(seed=settings.seed)
     study = optuna.create_study(direction=direction, sampler=sampler)
     try:
-        study.optimize(objective, n_trials=60, timeout=max(10, budget - (time.monotonic() - t0)),
-                       callbacks=[callback], n_jobs=1)
+        study.optimize(objective, n_trials=60, timeout=max(10, budget - (time.monotonic() - t0)), callbacks=[callback], n_jobs=1)
     except _Cancelled:
         raise
     if stopped_by_timer:
@@ -529,9 +591,9 @@ def _final_fit(task_type, spec, best, oof_store, ensemble_info, X_fit, y_fit):
                 else:
                     est.fit(X_fit, y_fit)
             members.append(est)
-        ens = cand.EnsembleModel(members, ensemble_info["weights"], task_type,
-                                 kinds=[oof_store[n][2] for n in ensemble_info["members"]],
-                                 cat_levels=spec.get("cat_levels", {}))
+        ens = cand.EnsembleModel(
+            members, ensemble_info["weights"], task_type, kinds=[oof_store[n][2] for n in ensemble_info["members"]], cat_levels=spec.get("cat_levels", {})
+        )
         return ens, "ensemble", {"members": ensemble_info["members"], "weights": ensemble_info["weights"]}
     _, params, kind = oof_store[best["name"]]
     if kind == "linear":
@@ -559,11 +621,15 @@ def _member_kinds(ensemble_info, oof_store):
     return [oof_store[n][2] for n in ensemble_info["members"]]
 
 
-def _evaluate(task_type, pipeline, kind, spec, ensemble_info, calibrator, conformal, ood,
-              X_ho, y_ho, df, holdout_idx, target_col, dataset, plan, num_cols, target_info):
+def _evaluate(
+    task_type, pipeline, kind, spec, ensemble_info, calibrator, conformal, ood, X_ho, y_ho, df, holdout_idx, target_col, dataset, plan, num_cols, target_info
+):
     if task_type == "regression":
-        preds = pipeline.predict(X_ho) if (ensemble_info or kind == "ensemble") else \
-            np.asarray(_estimator_predict_matrix(kind, pipeline, spec, X_ho, task_type)).ravel()
+        preds = (
+            pipeline.predict(X_ho)
+            if (ensemble_info or kind == "ensemble")
+            else np.asarray(_estimator_predict_matrix(kind, pipeline, spec, X_ho, task_type)).ravel()
+        )
         mae = mean_absolute_error(y_ho, preds)
         rmse = float(np.sqrt(mean_squared_error(y_ho, preds)))
         r2 = r2_score(y_ho, preds)
@@ -574,11 +640,13 @@ def _evaluate(task_type, pipeline, kind, spec, ensemble_info, calibrator, confor
         if not np.any(np.abs(y_ho) < 1e-9):
             mape = float(np.mean(np.abs((y_ho - preds) / y_ho)) * 100)
         intervals = [conf.regression_interval(p, conformal) for p in preds]
-        covered = np.array([lo <= yy <= hi for (lo, hi), yy in zip(intervals, y_ho)])
+        covered = np.array([lo <= yy <= hi for (lo, hi), yy in zip(intervals, y_ho, strict=False)])
         ood_flags = _ood_flags(ood, X_ho, num_cols)
         metrics = {
             "task_type": task_type,
-            "mae": float(mae), "rmse": rmse, "r2": float(r2),
+            "mae": float(mae),
+            "rmse": rmse,
+            "r2": float(r2),
             "mape": mape,
             "baseline": baseline,
             "baseline_mae": float(base_mae),
@@ -587,18 +655,21 @@ def _evaluate(task_type, pipeline, kind, spec, ensemble_info, calibrator, confor
             "coverage_target": conformal["alpha"],
             "n_holdout": int(len(y_ho)),
         }
-        holdout_frame = pd.DataFrame({
-            "y_true": y_ho, "pred": preds,
-            "interval_low": [i[0] for i in intervals],
-            "interval_high": [i[1] for i in intervals],
-            "ood": ood_flags,
-        })
+        holdout_frame = pd.DataFrame(
+            {
+                "y_true": y_ho,
+                "pred": preds,
+                "interval_low": [i[0] for i in intervals],
+                "interval_high": [i[1] for i in intervals],
+                "ood": ood_flags,
+            }
+        )
     elif task_type == "binary":
         proba_raw = _proba_matrix(pipeline, kind, spec, X_ho, task_type, ensemble_info)[:, 1]
         proba = calib_mod.apply_calibration(calibrator, proba_raw) if calibrator else proba_raw
         classes = target_info.get("classes", ["0", "1"])
         sets = [conf.predict_set(np.array([1 - p, p]), conformal, ["0", "1"]) for p in proba_raw]
-        covered = np.array([str(int(yy)) in s for yy, s in zip(y_ho, sets)])
+        covered = np.array([str(int(yy)) in s for yy, s in zip(y_ho, sets, strict=False)])
         preds = (proba >= 0.5).astype(int)
         auc = roc_auc_score(y_ho, proba_raw, labels=[0, 1]) if len(np.unique(y_ho)) >= 2 else 0.5
         pr_auc = average_precision_score(y_ho, proba_raw) if len(np.unique(y_ho)) >= 2 else 0.5
@@ -610,9 +681,12 @@ def _evaluate(task_type, pipeline, kind, spec, ensemble_info, calibrator, confor
         ood_flags = _ood_flags(ood, X_ho, num_cols)
         metrics = {
             "task_type": task_type,
-            "roc_auc": float(auc), "pr_auc": float(pr_auc),
-            "logloss": float(ll), "brier": float(brier),
-            "precision": float(precision), "recall": float(recall),
+            "roc_auc": float(auc),
+            "pr_auc": float(pr_auc),
+            "logloss": float(ll),
+            "brier": float(brier),
+            "precision": float(precision),
+            "recall": float(recall),
             "baseline": plan.baseline,
             "lift": round(float(auc - 0.5), 4),
             "base_rate": base_rate,
@@ -622,13 +696,15 @@ def _evaluate(task_type, pipeline, kind, spec, ensemble_info, calibrator, confor
             "n_holdout": int(len(y_ho)),
             "classes": classes,
         }
-        holdout_frame = pd.DataFrame({
-            "y_true": y_ho.astype(int),
-            "proba_raw": proba_raw,
-            "proba": proba,
-            "prediction_set": [",".join(str(c) for c in s) for s in sets],
-            "ood": ood_flags,
-        })
+        holdout_frame = pd.DataFrame(
+            {
+                "y_true": y_ho.astype(int),
+                "proba_raw": proba_raw,
+                "proba": proba,
+                "prediction_set": [",".join(str(c) for c in s) for s in sets],
+                "ood": ood_flags,
+            }
+        )
     else:
         proba = _proba_matrix(pipeline, kind, spec, X_ho, task_type, ensemble_info)
         preds = np.argmax(proba, axis=1)
@@ -636,11 +712,13 @@ def _evaluate(task_type, pipeline, kind, spec, ensemble_info, calibrator, confor
         f1m = f1_score(y_ho, preds, average="macro")
         ll = log_loss(y_ho, np.clip(proba, 1e-9, 1))
         sets = [conf.predict_set(row, conformal, [str(i) for i in range(proba.shape[1])]) for row in proba]
-        covered = np.array([str(int(yy)) in s for yy, s in zip(y_ho, sets)])
+        covered = np.array([str(int(yy)) in s for yy, s in zip(y_ho, sets, strict=False)])
         ood_flags = _ood_flags(ood, X_ho, num_cols)
         metrics = {
             "task_type": task_type,
-            "accuracy": float(acc), "macro_f1": float(f1m), "logloss": float(ll),
+            "accuracy": float(acc),
+            "macro_f1": float(f1m),
+            "logloss": float(ll),
             "baseline": plan.baseline,
             "baseline_accuracy": float(max(np.bincount(y_ho.astype(int)) / len(y_ho))),
             "coverage": float(covered.mean()),
@@ -648,12 +726,14 @@ def _evaluate(task_type, pipeline, kind, spec, ensemble_info, calibrator, confor
             "n_holdout": int(len(y_ho)),
             "classes": target_info.get("classes"),
         }
-        holdout_frame = pd.DataFrame({
-            "y_true": y_ho.astype(int),
-            "pred": preds,
-            "prediction_set": [",".join(str(c) for c in s) for s in sets],
-            "ood": ood_flags,
-        })
+        holdout_frame = pd.DataFrame(
+            {
+                "y_true": y_ho.astype(int),
+                "pred": preds,
+                "prediction_set": [",".join(str(c) for c in s) for s in sets],
+                "ood": ood_flags,
+            }
+        )
         for i in range(proba.shape[1]):
             holdout_frame[f"proba_{i}"] = proba[:, i]
 
@@ -705,8 +785,7 @@ def _input_schema(dataset, spec, classes, df) -> dict:
             properties[col]["example"] = sample[0]
         example[col] = sample[0] if sample else None
     return {
-        "input_schema": {"type": "object", "properties": properties, "required": required,
-                         "additionalProperties": True},
+        "input_schema": {"type": "object", "properties": properties, "required": required, "additionalProperties": True},
         "example": example,
         "target": {"column": spec["target_col"], "classes": classes},
     }

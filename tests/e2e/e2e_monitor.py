@@ -1,4 +1,5 @@
 """E2E мониторинга и живых функций: feedback → дрейф → вебхук-заглушка → плейбук → Prometheus → публичная страница."""
+
 import io
 import sys
 import time
@@ -64,8 +65,7 @@ def main():
     print("== 5. Разметка actionable + плейбук ==")
     num_col = next((k for k, v in schema["input_schema"]["properties"].items() if v["type"] == "number"), None)
     assert num_col, "нет числовой колонки в схеме"
-    r = client.patch(f"/api/models/{mid}", json={"actionable": {
-        num_col: {"min": 0, "max": 100, "direction": "both", "cost_per_unit": 100}}})
+    r = client.patch(f"/api/models/{mid}", json={"actionable": {num_col: {"min": 0, "max": 100, "direction": "both", "cost_per_unit": 100}}})
     check("actionable_saved", r.status_code == 200, r.text[:200])
     r = client.post(f"/api/v1/models/{mid}/counterfactual", json={"data": example})
     check("counterfactual_responds", r.status_code == 200 and ("found" in r.json() or "detail" in r.json()), r.text[:200])
@@ -105,8 +105,7 @@ def main():
     client.post(f"/api/public/manage/{mid}", json={"enabled": False})
 
     print("== 7. Контрфактуал: immutable не меняются (property-проверка) ==")
-    r = client.patch(f"/api/models/{mid}", json={"actionable": {
-        num_col: {"immutable": True}}})
+    r = client.patch(f"/api/models/{mid}", json={"actionable": {num_col: {"immutable": True}}})
     cf = client.post(f"/api/v1/models/{mid}/counterfactual", json={"data": example}).json()
     check("cf_needs_actionable", cf.get("found") is False or "разметьте" in str(cf.get("detail", "")), str(cf)[:200])
 

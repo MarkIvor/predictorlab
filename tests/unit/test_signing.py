@@ -2,9 +2,8 @@ import json
 from pathlib import Path
 
 import pytest
-
-from app.core.registry import artifacts
 from app.config import get_settings
+from app.core.registry import artifacts
 
 
 @pytest.fixture

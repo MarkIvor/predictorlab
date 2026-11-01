@@ -25,9 +25,6 @@ class SQLAlchemyConnector(Connector):
     def dialect(self) -> str:
         return self.db_type
 
-    def foreign_keys(self, table: str) -> list[dict]:
-        return []
-
     @property
     def engine(self) -> Engine:
         if self._engine is None:
@@ -61,8 +58,7 @@ class SQLAlchemyConnector(Connector):
     def fetch_table(self, table: str, limit: int = 500_000) -> pd.DataFrame:
         q = self.quote(table)
         with self.engine.connect() as c:
-            result = c.execution_options(stream_results=True, max_row_buffer=50_000).exec_driver_sql(
-                f"SELECT * FROM {q} LIMIT {int(limit)}")
+            result = c.execution_options(stream_results=True, max_row_buffer=50_000).exec_driver_sql(f"SELECT * FROM {q} LIMIT {int(limit)}")
             return pd.DataFrame(result.fetchall(), columns=list(result.keys()))
 
     def execute_sql(self, sql: str, limit: int = 500_000) -> pd.DataFrame:
@@ -97,11 +93,13 @@ class SQLAlchemyConnector(Connector):
             fks = insp.get_foreign_keys(table, schema=schema) if schema else insp.get_foreign_keys(table)
             result = []
             for fk in fks:
-                result.append({
-                    "column": (fk.get("constrained_columns") or [None])[0],
-                    "ref_table": fk.get("referred_table", ""),
-                    "ref_column": (fk.get("referred_columns") or [None])[0],
-                })
+                result.append(
+                    {
+                        "column": (fk.get("constrained_columns") or [""])[0],
+                        "ref_table": fk.get("referred_table", ""),
+                        "ref_column": (fk.get("referred_columns") or [""])[0],
+                    }
+                )
             return [r for r in result if r["column"] and r["ref_table"]]
         except Exception:
             return []

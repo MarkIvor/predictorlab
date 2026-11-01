@@ -21,7 +21,7 @@ def compute_threshold(holdout_frame: pd.DataFrame, cost: dict) -> dict:
     y_true = holdout_frame["y_true"].to_numpy(dtype=int)
     proba = holdout_frame["proba"].to_numpy(dtype=float)
     n_pos = float(np.sum(y_true == 1))
-    n_neg = float(np.sum(y_true == 0))
+    float(np.sum(y_true == 0))
     base_rate = n_pos / max(len(y_true), 1)
 
     capacity = cost.get("capacity")
@@ -74,7 +74,9 @@ def compute_threshold(holdout_frame: pd.DataFrame, cost: dict) -> dict:
         "vs_all": round(best["profit"] - profit_all, 2),
         "curve": sampled_curve,
         "n_treated": int(n_treated),
-        "tp": best["tp"], "fp": best["fp"], "fn": best["fn"],
+        "tp": best["tp"],
+        "fp": best["fp"],
+        "fn": best["fn"],
         "base_rate": round(base_rate, 4),
         "capacity": capacity,
         "scale": scale,

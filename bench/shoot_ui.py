@@ -1,4 +1,5 @@
 """Скриншоты ключевых экранов PredictorLab для проверки дизайн-системы."""
+
 import json
 import time
 from pathlib import Path
@@ -46,10 +47,16 @@ def main():
         ready = [m for m in models if m["status"] == "ready"]
         if ready:
             mid = ready[0]["id"]
-            for tab, name in [("OVERVIEW", "04_model_overview"), ("DRIVERS", "05_model_drivers"),
-                              ("WHAT-IF", "06_model_whatif"), ("PROFIT", "07_model_profit"),
-                              ("PREDICT", "08_model_predict"), ("API", "09_model_api"),
-                              ("CARD", "10_model_card"), ("MONITOR", "11_model_monitor")]:
+            for tab, name in [
+                ("OVERVIEW", "04_model_overview"),
+                ("DRIVERS", "05_model_drivers"),
+                ("WHAT-IF", "06_model_whatif"),
+                ("PROFIT", "07_model_profit"),
+                ("PREDICT", "08_model_predict"),
+                ("API", "09_model_api"),
+                ("CARD", "10_model_card"),
+                ("MONITOR", "11_model_monitor"),
+            ]:
                 page.goto(f"{BASE}/m/{mid}/{tab}", wait_until="networkidle")
                 time.sleep(1.2)
                 page.screenshot(path=OUT / f"{name}.png", full_page=True)

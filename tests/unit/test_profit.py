@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-
 from app.core.business.profit import compute_threshold, profit_at, regression_cost
 
 
@@ -54,7 +53,7 @@ def test_vs_random_and_vs_all():
     ho = holdout_frame()
     info = compute_threshold(ho, {"benefit_tp": 40000, "action_cost": 1500, "fn_cost": 8000})
     y = ho["y_true"].to_numpy()
-    p = ho["proba"].to_numpy()
+    ho["proba"].to_numpy()
     tp_all = int(np.sum(y == 1))
     fp_all = int(np.sum(y == 0))
     manual_all = tp_all * (40000 - 1500) - fp_all * 1500

@@ -1,9 +1,9 @@
 import pandas as pd
 
 
-def load_dataset_df(file_path: str, base_dir=None) -> pd.DataFrame:
+def load_dataset_df(file_path: str, base_dir: object = None) -> pd.DataFrame:
     import duckdb
-    from app.config import get_settings
+
     path = file_path
     con = duckdb.connect()
     try:
@@ -14,6 +14,7 @@ def load_dataset_df(file_path: str, base_dir=None) -> pd.DataFrame:
 
 def query_dataset(file_path: str, sql: str) -> pd.DataFrame:
     import duckdb
+
     con = duckdb.connect()
     try:
         con.execute(f"CREATE VIEW ds AS SELECT * FROM read_parquet('{_escape(file_path)}')")

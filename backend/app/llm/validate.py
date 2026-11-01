@@ -2,6 +2,10 @@ import re
 
 from pydantic import BaseModel, Field, ValidationError
 
+from app.llm.stoplist import validate_stoplist
+
+__all__ = ["validate_stoplist"]
+
 
 class JudgeResult(BaseModel):
     suspicious: list[dict] = Field(default_factory=list)

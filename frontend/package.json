@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint src --max-warnings 50",
+    "format": "prettier --write src"
   },
   "dependencies": {
     "@testing-library/dom": "^10.4.2",
@@ -19,6 +21,7 @@
     "recharts": "^3.8.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -26,8 +29,14 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^10.14.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^17.14.0",
     "jsdom": "^25.0.1",
+    "prettier": "^3.9.10",
     "typescript": "~6.0.2",
+    "typescript-eslint": "^8.72.1",
     "vite": "^8.0.10",
     "vitest": "^3.2.7"
   }

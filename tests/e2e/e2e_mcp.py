@@ -1,16 +1,17 @@
 """Smoke-тест MCP-сервера PredictorLab через stdio-транспорт."""
+
 import asyncio
 import os
 import sys
-import time
 
 import httpx
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.path.insert(0, "mcp/src")
 
-from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+from mcp import ClientSession, StdioServerParameters
 
 BASE = "http://localhost:8200"
 
@@ -44,6 +45,7 @@ async def main():
             print("LIST_MODELS ok:", models_text[:120].replace("\n", " "))
 
             import json as _json
+
             models = _json.loads(models_text)
             ready = next((m for m in models if m.get("status") == "ready" and m.get("task_type") == "binary"), None)
             assert ready, "нет готовой бинарной модели"

@@ -15,6 +15,7 @@ class ClickHouseConnector(Connector):
     def client(self):
         if self._client is None:
             import clickhouse_connect
+
             p = self.params
             self._client = clickhouse_connect.get_client(
                 host=p.get("host", "localhost"),

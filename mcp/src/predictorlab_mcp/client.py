@@ -17,8 +17,7 @@ class PredictorLabClient:
     def get_schema(self, model_id: int) -> dict:
         return self.http.get(f"/api/v1/models/{model_id}/schema").json()
 
-    def predict(self, model_id: int, data: list[dict], include: list[str] | None = None,
-                version: int | None = None) -> dict:
+    def predict(self, model_id: int, data: list[dict], include: list[str] | None = None, version: int | None = None) -> dict:
         body: dict = {"data": data, "include": include or []}
         if version is not None:
             body["version"] = version
@@ -28,12 +27,10 @@ class PredictorLabClient:
         return self.http.post(f"/api/v1/models/{model_id}/explain", json={"data": data}).json()
 
     def what_if(self, model_id: int, data: dict, changes: dict) -> dict:
-        return self.http.post(f"/api/v1/models/{model_id}/whatif",
-                             json={"data": data, "changes": changes}).json()
+        return self.http.post(f"/api/v1/models/{model_id}/whatif", json={"data": data, "changes": changes}).json()
 
     def counterfactual(self, model_id: int, data: dict, direction: str = "below") -> dict:
-        return self.http.post(f"/api/v1/models/{model_id}/counterfactual",
-                             json={"data": data, "direction": direction}).json()
+        return self.http.post(f"/api/v1/models/{model_id}/counterfactual", json={"data": data, "direction": direction}).json()
 
     def get_model_card(self, model_id: int) -> str:
         r = self.http.get(f"/api/v1/models/{model_id}/card")
@@ -58,6 +55,5 @@ class PredictorLabClient:
         }
 
     def train_model(self, model_id: int, mode: str = "quick") -> dict:
-        r = self.http.post(f"/api/models/{model_id}/train", json={"mode": mode},
-                           headers=self._admin_headers())
+        r = self.http.post(f"/api/models/{model_id}/train", json={"mode": mode}, headers=self._admin_headers())
         return r.json()

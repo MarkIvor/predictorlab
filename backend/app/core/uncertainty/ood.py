@@ -18,7 +18,7 @@ def fit_ood(X_num: np.ndarray, contamination: float = 0.01, max_rows: int = 20_0
 
 def ood_scores(ood: dict, X_num: np.ndarray) -> np.ndarray:
     X_imp = ood["imputer"].transform(X_num)
-    return ood["forest"].score_samples(X_imp)
+    return np.asarray(ood["forest"].score_samples(X_imp))
 
 
 def is_ood(ood: dict, X_num_row: np.ndarray) -> bool:

@@ -1,0 +1,55 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Python deps
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-asyncio pytest-cov pytest-timeout hypothesis requests ruff mypy bandit
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm install --legacy-peer-deps
+
+      - name: Lint
+        run: python -m ruff check backend tests tools bench mcp/src demo-data
+
+      - name: Typecheck
+        run: python -m mypy backend/app
+
+      - name: Frontend lint + typecheck
+        working-directory: frontend
+        run: |
+          npx eslint src --max-warnings 50
+          npx tsc --noEmit -p tsconfig.json
+
+      - name: make check
+        run: python tools/run.py check
+
+      - name: Coverage threshold (core/ >= 60%)
+        run: |
+          python -m pytest tests/unit tests/property tests/integration tests/llm tests/security \
+            -q --cov=backend/app/core --cov-report=term --cov-fail-under=60
+
+      - name: E2E smoke
+        run: |
+          pip install playwright
+          playwright install chromium --with-deps
+          python tests/e2e/e2e_full.py --with-server

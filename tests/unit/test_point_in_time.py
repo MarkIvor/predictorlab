@@ -1,9 +1,7 @@
 import duckdb
 import numpy as np
 import pandas as pd
-
 from app.core.features.builder import build_feature_sql
-
 
 CONFIG = {
     "main_table": "customers",
@@ -14,11 +12,16 @@ CONFIG = {
     "n_snapshots": 3,
     "horizon_days": 30,
     "children": [
-        {"table": "orders", "fk": "customer_id", "datetime_col": "order_date",
-         "windows": [7, 90], "rfm": True, "agg_columns": [{"fn": "sum", "col": "amount"}]},
+        {
+            "table": "orders",
+            "fk": "customer_id",
+            "datetime_col": "order_date",
+            "windows": [7, 90],
+            "rfm": True,
+            "agg_columns": [{"fn": "sum", "col": "amount"}],
+        },
     ],
-    "target": {"table": "orders", "fk": "customer_id", "datetime_col": "order_date",
-               "type": "count_in_window", "min_count": 1},
+    "target": {"table": "orders", "fk": "customer_id", "datetime_col": "order_date", "type": "count_in_window", "min_count": 1},
 }
 
 
@@ -44,19 +47,22 @@ def test_no_aggregate_uses_events_after_t0():
 
 
 def test_sql_executes_and_values_are_point_in_time():
-    rng = np.random.default_rng(21)
-    customers = pd.DataFrame({
-        "id": ["A", "B", "C"],
-        "segment": ["SMB", "Ent", "Mid"],
-        "signup_date": ["2023-01-01", "2023-02-01", "2023-03-01"],
-    })
-    orders = pd.DataFrame({
-        "order_id": ["o1", "o2", "o3", "o4", "o5", "o6"],
-        "customer_id": ["A", "A", "A", "B", "B", "C"],
-        "order_date": ["2024-05-20", "2024-05-25", "2024-06-15",
-                       "2024-05-10", "2024-06-20", "2024-05-28"],
-        "amount": [100.0, 200.0, 50.0, 10.0, 20.0, 30.0],
-    })
+    np.random.default_rng(21)
+    customers = pd.DataFrame(
+        {
+            "id": ["A", "B", "C"],
+            "segment": ["SMB", "Ent", "Mid"],
+            "signup_date": ["2023-01-01", "2023-02-01", "2023-03-01"],
+        }
+    )
+    orders = pd.DataFrame(
+        {
+            "order_id": ["o1", "o2", "o3", "o4", "o5", "o6"],
+            "customer_id": ["A", "A", "A", "B", "B", "C"],
+            "order_date": ["2024-05-20", "2024-05-25", "2024-06-15", "2024-05-10", "2024-06-20", "2024-05-28"],
+            "amount": [100.0, 200.0, 50.0, 10.0, 20.0, 30.0],
+        }
+    )
     con = duckdb.connect()
     con.register("customers", customers)
     con.register("orders", orders)
@@ -79,5 +85,5 @@ def test_sql_executes_and_values_are_point_in_time():
 
 def test_per_entity_mode_uses_row_datetime():
     sql = build_feature_sql(CONFIG, mode="per_entity")
-    assert "TRY_CAST(e.\"signup_date\" AS TIMESTAMP)" in sql
+    assert 'TRY_CAST(e."signup_date" AS TIMESTAMP)' in sql
     assert "CROSS JOIN" not in sql

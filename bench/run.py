@@ -4,6 +4,7 @@
 Поднимает изолированный инстанс (data-bench/, storage-bench/), прогоняет сценарии
 и пишет BENCHMARKS.md в корень репозитория.
 """
+
 import argparse
 import io
 import json
@@ -12,7 +13,7 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -72,7 +73,7 @@ def main():
 
     data_dir = ROOT / "data-bench"
     storage_dir = ROOT / "storage-bench"
-    for attempt in range(3):
+    for _attempt in range(3):
         for d in (data_dir, storage_dir):
             shutil.rmtree(d, ignore_errors=True)
         if not data_dir.exists() and not storage_dir.exists():
@@ -81,16 +82,21 @@ def main():
     for d in (data_dir, storage_dir):
         d.mkdir(parents=True, exist_ok=True)
 
-    env = {**os.environ,
-           "DATA_DIR": str(data_dir),
-           "STORAGE_DIR": str(storage_dir),
-           "ADMIN_EMAIL": "admin@predictorlab.io",
-           "ADMIN_PASSWORD": "admin",
-           "PYTHONIOENCODING": "utf-8"}
+    env = {
+        **os.environ,
+        "DATA_DIR": str(data_dir),
+        "STORAGE_DIR": str(storage_dir),
+        "ADMIN_EMAIL": "admin@predictorlab.io",
+        "ADMIN_PASSWORD": "admin",
+        "PYTHONIOENCODING": "utf-8",
+    }
     server = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(args.port)],
-        cwd=str(ROOT / "backend"), env=env,
-        stdout=open(ROOT / "bench-server.log", "w"), stderr=subprocess.STDOUT)
+        cwd=str(ROOT / "backend"),
+        env=env,
+        stdout=open(ROOT / "bench-server.log", "w"),
+        stderr=subprocess.STDOUT,
+    )
 
     results: list[dict] = []
     try:
@@ -102,16 +108,13 @@ def main():
         df = make_bench_data()
         buf = io.StringIO()
         df.to_csv(buf, index=False)
-        r = client.post("/api/datasets/upload",
-                        files={"file": ("bench.csv", buf.getvalue().encode(), "text/csv")},
-                        data={"name": "bench_50k"})
+        r = client.post("/api/datasets/upload", files={"file": ("bench.csv", buf.getvalue().encode(), "text/csv")}, data={"name": "bench_50k"})
         assert r.status_code == 201, r.text[:300]
         ds_id = r.json()["id"]
         schema = client.get(f"/api/datasets/{ds_id}").json()
-        example_row = {c["name"]: v for c, v in zip(schema["columns"], [])} if False else None
+        {c["name"]: v for c, v in zip(schema["columns"], [], strict=False)} if False else None
 
-        r = client.post("/api/models", json={"dataset_id": ds_id, "name": "bench_model",
-                                             "target_col": "target", "event_time_col": "event_date"})
+        r = client.post("/api/models", json={"dataset_id": ds_id, "name": "bench_model", "target_col": "target", "event_time_col": "event_date"})
         assert r.status_code == 201, r.text[:300]
         model = r.json()
         mid = model["id"]
@@ -123,8 +126,9 @@ def main():
         jr = wait_job(client, client.post(f"/api/models/{mid}/train", json={"mode": "quick"}).json()["job_id"], 1800)
         quick_sec = time.monotonic() - t0
         assert jr["status"] == "done", str(jr)[:300]
-        results.append({"op": "Обучение quick, 50k×50", "budget": "~1–2 мин", "value": f"{quick_sec:.1f}s",
-                        "ok": quick_sec < 240, "note": "бюджет v0.1 — ориентировочный"})
+        results.append(
+            {"op": "Обучение quick, 50k×50", "budget": "~1–2 мин", "value": f"{quick_sec:.1f}s", "ok": quick_sec < 240, "note": "бюджет v0.1 — ориентировочный"}
+        )
 
         full_sec = None
         if not args.skip_full:
@@ -133,9 +137,15 @@ def main():
             jr = wait_job(client, client.post(f"/api/models/{mid}/train", json={"mode": "full"}).json()["job_id"], 2400)
             full_sec = time.monotonic() - t0
             assert jr["status"] == "done", str(jr)[:300]
-            results.append({"op": "Обучение full, 50k×50", "budget": "в пределах TRAIN_TIME_BUDGET_SEC=600",
-                            "value": f"{full_sec:.1f}s", "ok": full_sec <= 660,
-                            "note": "Optuna CatBoost+LightGBM, поиск остановлен по таймеру"})
+            results.append(
+                {
+                    "op": "Обучение full, 50k×50",
+                    "budget": "в пределах TRAIN_TIME_BUDGET_SEC=600",
+                    "value": f"{full_sec:.1f}s",
+                    "ok": full_sec <= 660,
+                    "note": "Optuna CatBoost+LightGBM, поиск остановлен по таймеру",
+                }
+            )
 
         schema = client.get(f"/api/v1/models/{mid}/schema").json()
         example = schema.get("example") or {}
@@ -163,22 +173,40 @@ def main():
             r = client.post(f"/api/v1/models/{mid}/predict", json={"data": [rec], "include": ["reasons"]})
             with_reasons.append((time.monotonic() - t0) * 1000)
             assert r.status_code == 200, r.text[:200]
-        results.append({"op": "predict, 1 запись, без причин", "budget": "< 300 мс",
-                         "value": f"{median(no_reasons):.0f} мс (медиана)", "ok": median(no_reasons) < 300, "note": ""})
-        results.append({"op": "predict + top_reasons (SHAP)", "budget": "< 1 с",
-                         "value": f"{median(with_reasons):.0f} мс (медиана)", "ok": median(with_reasons) < 1000, "note": ""})
+        results.append(
+            {
+                "op": "predict, 1 запись, без причин",
+                "budget": "< 300 мс",
+                "value": f"{median(no_reasons):.0f} мс (медиана)",
+                "ok": median(no_reasons) < 300,
+                "note": "",
+            }
+        )
+        results.append(
+            {
+                "op": "predict + top_reasons (SHAP)",
+                "budget": "< 1 с",
+                "value": f"{median(with_reasons):.0f} мс (медиана)",
+                "ok": median(with_reasons) < 1000,
+                "note": "",
+            }
+        )
 
         print("Контрфактуал…")
         num_col = next((k for k, v in schema["input_schema"]["properties"].items() if v["type"] == "number"), None)
-        client.patch(f"/api/models/{mid}", json={"actionable": {
-            num_col: {"min": float(min(rec.get(num_col, 0), 0)) - 5, "max": float(rec.get(num_col, 0)) + 5,
-                      "direction": "both", "cost_per_unit": 10}}})
+        client.patch(
+            f"/api/models/{mid}",
+            json={
+                "actionable": {
+                    num_col: {"min": float(min(rec.get(num_col, 0), 0)) - 5, "max": float(rec.get(num_col, 0)) + 5, "direction": "both", "cost_per_unit": 10}
+                }
+            },
+        )
         client.post(f"/api/models/{mid}/profit", json={"benefit_tp": 50000, "action_cost": 1000, "fn_cost": 5000})
         t0 = time.monotonic()
         r = client.post(f"/api/v1/models/{mid}/counterfactual", json={"data": rec})
         cf_sec = time.monotonic() - t0
-        results.append({"op": "counterfactual, 1 объект", "budget": "< 10 с (v0.2)",
-                         "value": f"{cf_sec:.2f}s", "ok": cf_sec < 10, "note": str(r.json())[:80]})
+        results.append({"op": "counterfactual, 1 объект", "budget": "< 10 с (v0.2)", "value": f"{cf_sec:.2f}s", "ok": cf_sec < 10, "note": str(r.json())[:80]})
 
         print("Batch 10k…")
         cols = list(rec.keys())
@@ -191,14 +219,20 @@ def main():
                 row[c] = (v + (i % 7) * 0.01) if isinstance(v, (int, float)) and not isinstance(v, bool) else v
             buf.write(",".join(str(row[c]) for c in cols) + "\n")
         t0 = time.monotonic()
-        r = client.post(f"/api/v1/models/{mid}/predict/batch",
-                        files={"file": ("batch.csv", buf.getvalue().encode(), "text/csv")})
+        r = client.post(f"/api/v1/models/{mid}/predict/batch", files={"file": ("batch.csv", buf.getvalue().encode(), "text/csv")})
         assert r.status_code == 202, r.text[:200]
         jr = wait_job(client, r.json()["job_id"], 1800)
         batch_sec = time.monotonic() - t0
         assert jr["status"] == "done", str(jr)[:300]
-        results.append({"op": "Batch 10k строк, прогноз + интервалы", "budget": "< 2 мин (фоновая задача)",
-                         "value": f"{batch_sec:.1f}s", "ok": batch_sec < 120, "note": f"{jr['progress'].get('rows')} строк"})
+        results.append(
+            {
+                "op": "Batch 10k строк, прогноз + интервалы",
+                "budget": "< 2 мин (фоновая задача)",
+                "value": f"{batch_sec:.1f}s",
+                "ok": batch_sec < 120,
+                "note": f"{jr['progress'].get('rows')} строк",
+            }
+        )
 
     finally:
         server.terminate()
@@ -207,8 +241,7 @@ def main():
         except Exception:
             pass
         if os.name == "nt":
-            subprocess.run(["taskkill", "/F", "/T", "/PID", str(server.pid)],
-                           capture_output=True)
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(server.pid)], capture_output=True)
         else:
             try:
                 server.kill()
@@ -218,7 +251,7 @@ def main():
     lines = [
         "# BENCHMARKS.md — измеренные бюджеты производительности",
         "",
-        f"Дата замера: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} · окружение: Windows, Python 3.12, CPU, без GPU",
+        f"Дата замера: {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')} · окружение: Windows, Python 3.12, CPU, без GPU",
         "Референс из ТЗ §11.1. Бюджеты — ориентиры для замера, не ворота приёмки (кроме §11.3).",
         "",
         "| Операция | Бюджет | Измерено | В бюджете | Комментарий |",

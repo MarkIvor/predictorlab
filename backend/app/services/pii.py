@@ -77,14 +77,16 @@ def scan_columns(columns: list[dict], sample_rows: list[dict]) -> dict[str, str]
     return result
 
 
-def mask_value(value: Any, pii_type: str) -> str:
+def mask_value(value: Any, pii_type: str) -> Any:
     if value is None:
         return ""
+    if not pii_type:
+        return value
     s = str(value)
     if pii_type == "email":
         at = s.find("@")
         if at > 1:
-            return s[0] + "***@" + s[at + 1:]
+            return s[0] + "***@" + s[at + 1 :]
         return "***@" + s
     if pii_type == "phone":
         digits = re.sub(r"\D", "", s)

@@ -45,9 +45,14 @@ def resolve_entry(entry: str):
     return getattr(mod, func)
 
 
-def create_job(job_type: str, user_id: int | None = None, model_id: int | None = None,
-               dataset_id: int | None = None, payload: dict | None = None,
-               idempotency_key: str | None = None) -> Job:
+def create_job(
+    job_type: str,
+    user_id: int | None = None,
+    model_id: int | None = None,
+    dataset_id: str | None = None,
+    payload: dict | None = None,
+    idempotency_key: str | None = None,
+) -> Job:
     if job_type not in ENTRYPOINTS:
         raise ValueError(f"Unknown job type: {job_type}")
     db = SessionLocal()
@@ -80,9 +85,8 @@ def submit(job: Job) -> Job:
         loop.create_task(_run_job(job.id, ENTRYPOINTS[job.type]))
     except RuntimeError:
         if _main_loop is None or _main_loop.is_closed():
-            raise RuntimeError("Нет активного event loop для фоновой задачи")
-        _main_loop.call_soon_threadsafe(
-            lambda: _main_loop.create_task(_run_job(job.id, ENTRYPOINTS[job.type])))
+            raise RuntimeError("Нет активного event loop для фоновой задачи") from None
+        _main_loop.call_soon_threadsafe(lambda: _main_loop.create_task(_run_job(job.id, ENTRYPOINTS[job.type])))
     return job
 
 
@@ -91,6 +95,8 @@ async def _run_job(job_id: str, entry: str):
     db = SessionLocal()
     try:
         job = db.get(Job, job_id)
+        if job is None:
+            return
         if job.status in ("done", "error", "cancelled"):
             return
         job.status = "running"
@@ -104,6 +110,8 @@ async def _run_job(job_id: str, entry: str):
         db = SessionLocal()
         try:
             job = db.get(Job, job_id)
+            if job is None:
+                return
             if job.status == "cancelled":
                 return
             job.status = "done"
@@ -122,7 +130,7 @@ async def _run_job(job_id: str, entry: str):
         db = SessionLocal()
         try:
             job = db.get(Job, job_id)
-            if job and job.status != "cancelled":
+            if job is not None and job.status != "cancelled":
                 if job.cancel_requested:
                     job.status = "cancelled"
                 else:

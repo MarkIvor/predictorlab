@@ -20,6 +20,7 @@ def make_background(X: pd.DataFrame, y: np.ndarray | None, max_rows: int = 500, 
 
 def shap_matrix(pipeline: dict, X_bg: pd.DataFrame, X: pd.DataFrame) -> np.ndarray:
     import shap
+
     kind = pipeline["kind"]
     est = pipeline["estimator"]
     if kind == "linear":
@@ -34,7 +35,7 @@ def shap_matrix(pipeline: dict, X_bg: pd.DataFrame, X: pd.DataFrame) -> np.ndarr
     values = np.asarray(values)
     if values.ndim == 3:
         values = values[:, :, -1]
-    return values
+    return np.asarray(values)
 
 
 def _linear_shap(pipeline: dict, X_bg: pd.DataFrame, X: pd.DataFrame) -> np.ndarray:
@@ -56,9 +57,9 @@ def _linear_shap(pipeline: dict, X_bg: pd.DataFrame, X: pd.DataFrame) -> np.ndar
     try:
         names = pre.get_feature_names_out()
     except Exception:
-        return contrib
+        return np.asarray(contrib)
     if len(names) != contrib.shape[1]:
-        return contrib
+        return np.asarray(contrib)
     col_index = {col: i for i, col in enumerate(feature_cols)}
     for j, name in enumerate(names):
         body = name.split("__", 1)[-1]
@@ -110,10 +111,12 @@ def local_reasons(shap_row: np.ndarray, feature_cols: list[str], values_row: dic
         feature = feature_cols[i]
         val = values_row.get(feature)
         impact = float(shap_row[i])
-        reasons.append({
-            "feature": feature,
-            "value": None if val is None or (isinstance(val, float) and np.isnan(val)) else val,
-            "impact": round(impact, 6),
-            "direction": "up" if impact >= 0 else "down",
-        })
+        reasons.append(
+            {
+                "feature": feature,
+                "value": None if val is None or (isinstance(val, float) and np.isnan(val)) else val,
+                "impact": round(impact, 6),
+                "direction": "up" if impact >= 0 else "down",
+            }
+        )
     return reasons

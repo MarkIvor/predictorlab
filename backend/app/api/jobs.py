@@ -45,8 +45,7 @@ def cancel_job(job_id: str, user: User = Depends(get_current_user)):
 
 
 @router.get("/{job_id}/events")
-async def job_events(job_id: str, request: Request, after: int = 0,
-                     user: User = Depends(get_current_user)):
+async def job_events(job_id: str, request: Request, after: int = 0, user: User = Depends(get_current_user)):
     db = SessionLocal()
     job = db.get(Job, job_id)
     db.close()
@@ -68,8 +67,7 @@ async def job_events(job_id: str, request: Request, after: int = 0,
                     data = json.dumps({"data": ev.data, "ts": ev.ts.isoformat() if ev.ts else None}, ensure_ascii=False)
                     yield f"id: {ev.id}\nevent: {ev.type}\ndata: {data}\n\n"
                 if current and current.status in ("done", "error", "cancelled"):
-                    payload = {"status": current.status, "progress": current.progress or {}, "error": current.error,
-                               "result_path": current.result_path}
+                    payload = {"status": current.status, "progress": current.progress or {}, "error": current.error, "result_path": current.result_path}
                     yield f"event: done\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
                     sent_done = True
             finally:
@@ -78,5 +76,4 @@ async def job_events(job_id: str, request: Request, after: int = 0,
                 break
             await asyncio.sleep(0.5)
 
-    return StreamingResponse(stream(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

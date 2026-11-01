@@ -1,4 +1,5 @@
 """E2E-прогон полного сценария ТЗ §4 на синтетике с утечкой. Использование: python tests/e2e_full.py [--base http://localhost:8200]."""
+
 import argparse
 import io
 import sys
@@ -33,10 +34,13 @@ def main():
     server = None
     if args.with_server:
         import subprocess
+
         server = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(base.rsplit(":", 1)[1])],
-            cwd=str(BASE_DIR / "backend"), stdout=open(BASE_DIR / "uvicorn-e2e.log", "w"),
-            stderr=subprocess.STDOUT)
+            cwd=str(BASE_DIR / "backend"),
+            stdout=open(BASE_DIR / "uvicorn-e2e.log", "w"),
+            stderr=subprocess.STDOUT,
+        )
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             try:
@@ -62,12 +66,10 @@ def _run_e2e(base: str):
     r = client.post("/api/auth/login", json={"email": "admin@predictorlab.io", "password": "admin"})
     check("login", r.status_code == 200, r.text[:200])
     assert r.status_code == 200
-    token = None
 
     print("== 2. Загрузка датасета с утечкой ==")
     with open(DEMO / "b2b_leaky.csv", "rb") as f:
-        r = client.post("/api/datasets/upload", files={"file": ("b2b_leaky.csv", f, "text/csv")},
-                        data={"name": "e2e_leaky"})
+        r = client.post("/api/datasets/upload", files={"file": ("b2b_leaky.csv", f, "text/csv")}, data={"name": "e2e_leaky"})
     check("upload", r.status_code == 201, r.text[:300])
     dataset = r.json()
     ds_id = dataset["id"]
@@ -76,8 +78,7 @@ def _run_e2e(base: str):
     check("pii_excluded", cols.get("support_email", {}).get("excluded") is True, "ПДн исключены по умолчанию")
 
     print("== 3. Создание модели: Leakage Guard должен дать BLOCK ==")
-    r = client.post("/api/models", json={"dataset_id": ds_id, "name": "e2e_churn",
-                                         "target_col": "churn", "event_time_col": "event_date"})
+    r = client.post("/api/models", json={"dataset_id": ds_id, "name": "e2e_churn", "target_col": "churn", "event_time_col": "event_date"})
     check("model_created", r.status_code == 201, r.text[:300])
     model = r.json()
     model_id = model["id"]
@@ -106,8 +107,7 @@ def _run_e2e(base: str):
         if last_status in ("done", "error", "cancelled"):
             break
         time.sleep(3)
-    check("train_done", last_status == "done",
-          f"status={last_status} err={(client.get(f'/api/jobs/{job_id}').json().get('error') or '')[:400]}")
+    check("train_done", last_status == "done", f"status={last_status} err={(client.get(f'/api/jobs/{job_id}').json().get('error') or '')[:400]}")
     job = client.get(f"/api/jobs/{job_id}").json()
 
     print("== 6. Метрики ==")
@@ -118,9 +118,12 @@ def _run_e2e(base: str):
     check("version_ready", model.get("status") == "ready" and model.get("active_version") is not None, str(model.get("status")))
     check("auc_sane", auc is not None and 0.6 < auc < 0.95, f"roc_auc={auc}")
     coverage = metrics.get("coverage")
-    check("conformal_coverage", coverage is not None and coverage >= 0.85,
-          f"coverage={coverage} (односторонняя гарантия ≥ α для дисбалансированных классов, см. DECISIONS D-12)")
-    split_kind = (model.get("metrics") or {}).get("split_kind") or (job.get("progress", {}).get("split", {}) or {}).get("kind")
+    check(
+        "conformal_coverage",
+        coverage is not None and coverage >= 0.85,
+        f"coverage={coverage} (односторонняя гарантия ≥ α для дисбалансированных классов, см. DECISIONS D-12)",
+    )
+    (model.get("metrics") or {}).get("split_kind") or (job.get("progress", {}).get("split", {}) or {}).get("kind")
     card = client.get(f"/api/models/{model_id}/card").json()
     check("card_has_out_of_time", "out-of-time" in (card.get("card_md") or ""), "Model Card должна показывать out-of-time сплит")
     check("card_exists", bool(card.get("card_md")))
@@ -146,7 +149,11 @@ def _run_e2e(base: str):
     r = api.post(f"/api/v1/models/{model_id}/predict", json={"data": [rec], "include": ["reasons"]})
     check("predict_contract", r.status_code == 200, r.text[:300])
     pred = r.json()["predictions"][0]
-    check("predict_fields", all(k in pred for k in ("prediction_id", "label", "probability", "decision", "threshold", "conformal", "out_of_distribution")), str(pred)[:300])
+    check(
+        "predict_fields",
+        all(k in pred for k in ("prediction_id", "label", "probability", "decision", "threshold", "conformal", "out_of_distribution")),
+        str(pred)[:300],
+    )
     check("reasons_present", bool(pred.get("top_reasons")), str(pred)[:200])
     check("no_actions_by_default", "recommended_action" not in pred, "без include=actions действия не должно быть")
 
@@ -157,10 +164,17 @@ def _run_e2e(base: str):
     check("whatif", r.status_code == 200 and "after" in r.json(), r.text[:200])
 
     print("== 8. Профит и порог ==")
-    r = client.post(f"/api/models/{model_id}/profit", json={
-        "benefit_tp": 40000, "action_cost": 1500, "fn_cost": 8000, "capacity": 300,
-        "scale": 1, "period_label": "holdout = 1 месяц",
-    })
+    r = client.post(
+        f"/api/models/{model_id}/profit",
+        json={
+            "benefit_tp": 40000,
+            "action_cost": 1500,
+            "fn_cost": 8000,
+            "capacity": 300,
+            "scale": 1,
+            "period_label": "holdout = 1 месяц",
+        },
+    )
     check("profit_computed", r.status_code == 200, r.text[:300])
     info = r.json()
     threshold = info.get("threshold")
@@ -169,7 +183,6 @@ def _run_e2e(base: str):
 
     print("== 9. Batch-прогноз ==")
     buf = io.StringIO()
-    import csv
     sample_cols = list(rec.keys())
     buf.write(",".join(sample_cols) + "\n")
     for i in range(50):
@@ -177,9 +190,7 @@ def _run_e2e(base: str):
         row["days_since_last_order"] = 10 + i * 3
         buf.write(",".join(str(row[c]) for c in sample_cols) + "\n")
     buf.seek(0)
-    r = api.post(f"/api/v1/models/{model_id}/predict/batch",
-                 files={"file": ("batch.csv", buf.read().encode(), "text/csv")},
-                 data={"include": "reasons"})
+    r = api.post(f"/api/v1/models/{model_id}/predict/batch", files={"file": ("batch.csv", buf.read().encode(), "text/csv")}, data={"include": "reasons"})
     check("batch_started", r.status_code == 202, r.text[:200])
     batch_job = r.json()["job_id"]
     deadline = time.monotonic() + 300

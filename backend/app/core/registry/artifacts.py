@@ -2,14 +2,24 @@ import hashlib
 import hmac
 import json
 from pathlib import Path
+from typing import Any
 
 import joblib
 
 from app.config import get_settings
 
-ARTIFACT_NAMES = ("pipeline.joblib", "conformal.joblib", "ood.joblib", "schema.json",
-                  "metrics.json", "leakage_report.json", "shap_background.parquet",
-                  "feature_sql.sql", "holdout_preds.parquet", "manifest.json")
+ARTIFACT_NAMES = (
+    "pipeline.joblib",
+    "conformal.joblib",
+    "ood.joblib",
+    "schema.json",
+    "metrics.json",
+    "leakage_report.json",
+    "shap_background.parquet",
+    "feature_sql.sql",
+    "holdout_preds.parquet",
+    "manifest.json",
+)
 
 
 def version_dir(model_id: int, version: int) -> Path:
@@ -22,25 +32,25 @@ def _sign(path: Path, key: str) -> str:
     return digest
 
 
-def save_joblib(dir_path: Path, name: str, obj) -> Path:
+def save_joblib(dir_path: Path, name: str, obj: object) -> Path:
     dir_path.mkdir(parents=True, exist_ok=True)
     path = dir_path / name
     joblib.dump(obj, path)
     return path
 
 
-def save_json(dir_path: Path, name: str, data) -> Path:
+def save_json(dir_path: Path, name: str, data: object) -> Path:
     dir_path.mkdir(parents=True, exist_ok=True)
     path = dir_path / name
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return path
 
 
-def load_joblib(path: Path):
+def load_joblib(path: Path) -> object:
     return joblib.load(path)
 
 
-def load_json(path: Path):
+def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
@@ -7,7 +7,7 @@ from app.config import get_settings
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
@@ -213,8 +213,10 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 def init_db():
     Base.metadata.create_all(engine)
     from app.services.security import hash_password
+
     with engine.begin() as conn:
         from sqlalchemy import select as sa_select
+
         exists = conn.execute(sa_select(User.id).limit(1)).first()
         if not exists:
             s = get_settings()

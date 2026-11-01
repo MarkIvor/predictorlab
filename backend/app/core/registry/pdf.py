@@ -1,12 +1,13 @@
 import re
 from pathlib import Path
+from typing import Any
 
 from app.config import get_settings
 
 FONT_PATH = Path(__file__).resolve().parents[3] / "static" / "fonts" / "DejaVuSansCondensed.ttf"
 
 
-def card_pdf(model, version) -> Path:
+def card_pdf(model: Any, version: Any) -> Path:
     from fpdf import FPDF
 
     pdf = FPDF()

@@ -10,7 +10,7 @@ def _try_numeric(series: pd.Series) -> float:
     non_null = series.notna()
     if non_null.sum() == 0:
         return 0.0
-    return converted[non_null].notna().mean()
+    return float(converted[non_null].notna().mean())
 
 
 def _try_datetime(series: pd.Series) -> float:
@@ -31,11 +31,12 @@ def _try_datetime(series: pd.Series) -> float:
     mask = series.notna()
     if mask.sum() == 0:
         return 0.0
-    return converted[mask].notna().mean()
+    return float(converted[mask].notna().mean())
 
 
 def _date_like(value: str) -> bool:
     import re
+
     return bool(re.search(r"\d{1,4}[-/.:T]\d{1,2}", value)) or bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}.*", value))
 
 
@@ -80,18 +81,20 @@ def infer_column_meta(df: pd.DataFrame, scan_rows: int = 50_000) -> list[dict]:
             top = col.value_counts(dropna=True).head(5)
             stats = {"top": [{"value": str(k), "count": int(v)} for k, v in top.items()]}
 
-        meta.append({
-            "name": str(name),
-            "type": col_type,
-            "pandas_dtype": str(col.dtype),
-            "n_missing": n_missing,
-            "missing_pct": round(n_missing / n * 100, 3) if n else 0.0,
-            "nunique": nunique,
-            "uniqueness": round(uniqueness, 6),
-            "sample": sample_values,
-            "stats": stats,
-            "pii": None,
-            "excluded": col_type in ("id", "constant"),
-            "exclude_reason": "ID-подобная колонка" if col_type == "id" else ("константа" if col_type == "constant" else None),
-        })
+        meta.append(
+            {
+                "name": str(name),
+                "type": col_type,
+                "pandas_dtype": str(col.dtype),
+                "n_missing": n_missing,
+                "missing_pct": round(n_missing / n * 100, 3) if n else 0.0,
+                "nunique": nunique,
+                "uniqueness": round(uniqueness, 6),
+                "sample": sample_values,
+                "stats": stats,
+                "pii": None,
+                "excluded": col_type in ("id", "constant"),
+                "exclude_reason": "ID-подобная колонка" if col_type == "id" else ("константа" if col_type == "constant" else None),
+            }
+        )
     return meta

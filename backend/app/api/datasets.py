@@ -1,4 +1,4 @@
-﻿import secrets
+import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -68,9 +68,14 @@ def get_owned_dataset(dataset_id: str, user: User, db: Session) -> Dataset:
 
 
 @router.post("/upload", status_code=201)
-def upload(file: UploadFile = File(...), sheet: str | None = Form(None),
-           sample_rows: int | None = Form(None), name: str | None = Form(None),
-           user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
+def upload(
+    file: UploadFile = File(...),
+    sheet: str | None = Form(None),
+    sample_rows: int | None = Form(None),
+    name: str | None = Form(None),
+    user: User = Depends(require_role("admin", "builder")),
+    db: Session = Depends(get_db),
+):
     settings = get_settings()
     tmp_dir = settings.storage_path / "tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -87,9 +92,11 @@ def upload(file: UploadFile = File(...), sheet: str | None = Form(None),
         except IngestError:
             raise
         except Exception as exc:
-            raise IngestError(f"Не удалось прочитать файл: {exc}")
+            raise IngestError(f"Не удалось прочитать файл: {exc}") from None
         if sample_rows:
-            df = sample_rows(df, sample_rows)
+            from app.core.ingest.loader import sample_rows as _sample
+
+            df = _sample(df, int(sample_rows))
         dataset_id, nrows, ncols, columns_meta, data_hash, health = ingest_dataframe(df)
         d = Dataset(
             id=dataset_id,
@@ -118,7 +125,11 @@ def list_datasets(user: User = Depends(require_role("admin", "builder", "viewer"
         q = q.filter(Dataset.user_id == user.id)
     return [
         {
-            "id": d.id, "name": d.name, "source_type": d.source_type, "nrows": d.nrows, "ncols": d.ncols,
+            "id": d.id,
+            "name": d.name,
+            "source_type": d.source_type,
+            "nrows": d.nrows,
+            "ncols": d.ncols,
             "created_at": d.created_at.isoformat() if d.created_at else None,
         }
         for d in q.order_by(Dataset.created_at.desc()).all()
@@ -126,8 +137,7 @@ def list_datasets(user: User = Depends(require_role("admin", "builder", "viewer"
 
 
 @router.get("/{dataset_id}")
-def get_dataset(dataset_id: str, rows: int = 20,
-                user: User = Depends(require_role("admin", "builder", "viewer")), db: Session = Depends(get_db)):
+def get_dataset(dataset_id: str, rows: int = 20, user: User = Depends(require_role("admin", "builder", "viewer")), db: Session = Depends(get_db)):
     d = get_owned_dataset(dataset_id, user, db)
     settings = get_settings()
     df = ds_io.load_dataset_df(str(settings.storage_path / d.file_path))
@@ -136,8 +146,7 @@ def get_dataset(dataset_id: str, rows: int = 20,
 
 
 @router.patch("/{dataset_id}")
-def patch_dataset(dataset_id: str, body: DatasetPatch,
-                  user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
+def patch_dataset(dataset_id: str, body: DatasetPatch, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     d = get_owned_dataset(dataset_id, user, db)
     if body.name is not None:
         d.name = body.name
@@ -171,8 +180,7 @@ def patch_dataset(dataset_id: str, body: DatasetPatch,
 
 
 @router.post("/{dataset_id}/sample", status_code=201)
-def sample_dataset(dataset_id: str, body: SampleIn,
-                   user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
+def sample_dataset(dataset_id: str, body: SampleIn, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     d = get_owned_dataset(dataset_id, user, db)
     settings = get_settings()
     df = ds_io.load_dataset_df(str(settings.storage_path / d.file_path))
@@ -201,8 +209,7 @@ def sample_dataset(dataset_id: str, body: SampleIn,
 
 
 @router.post("/{dataset_id}/dedupe", status_code=201)
-def dedupe_dataset(dataset_id: str,
-                    user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
+def dedupe_dataset(dataset_id: str, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     d = get_owned_dataset(dataset_id, user, db)
     settings = get_settings()
     df = ds_io.load_dataset_df(str(settings.storage_path / d.file_path))
@@ -232,11 +239,11 @@ def dedupe_dataset(dataset_id: str,
 
 
 @router.delete("/{dataset_id}")
-def delete_dataset(dataset_id: str,
-                   user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
+def delete_dataset(dataset_id: str, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     d = get_owned_dataset(dataset_id, user, db)
     settings = get_settings()
     import shutil
+
     shutil.rmtree(settings.storage_path / Path(d.file_path).parent, ignore_errors=True)
     db.delete(d)
     db.commit()

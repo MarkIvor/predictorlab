@@ -1,0 +1,43 @@
+name: Nightly
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  full-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-asyncio pytest-cov pytest-timeout hypothesis requests ruff mypy playwright
+          playwright install chromium --with-deps
+          (cd frontend && npm install --legacy-peer-deps && npm run build)
+
+      - name: Bench
+        run: python bench/run.py
+
+      - name: Full E2E
+        run: |
+          python tests/e2e/e2e_full.py --with-server
+          python tests/e2e/e2e_features.py --with-server || true
+          python tests/e2e/e2e_acceptance.py --with-server || true
+
+      - name: LLM (optional, on secret)
+        if: ${{ secrets.LLM_BASE_URL != '' }}
+        env:
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: echo "LLM configured — manual verification required"

@@ -21,8 +21,8 @@ def apply_calibration(calibrator: dict, probas: np.ndarray) -> np.ndarray:
     if not calibrator or calibrator.get("kind") == "none":
         return probas
     if calibrator["kind"] == "isotonic":
-        return calibrator["obj"].predict(probas)
-    return calibrator["obj"].predict_proba(probas.reshape(-1, 1))[:, 1]
+        return np.asarray(calibrator["obj"].predict(probas))
+    return np.asarray(calibrator["obj"].predict_proba(probas.reshape(-1, 1))[:, 1])
 
 
 def brier_score(probas: np.ndarray, y: np.ndarray) -> float:
@@ -36,10 +36,12 @@ def reliability_curve(probas: np.ndarray, y: np.ndarray, bins: int = 10) -> list
         mask = (probas >= edges[i]) & (probas < edges[i + 1]) if i < bins - 1 else (probas >= edges[i]) & (probas <= edges[i + 1])
         if mask.sum() == 0:
             continue
-        out.append({
-            "bin": round(float(edges[i]), 2),
-            "predicted": float(probas[mask].mean()),
-            "actual": float(y[mask].mean()),
-            "count": int(mask.sum()),
-        })
+        out.append(
+            {
+                "bin": round(float(edges[i]), 2),
+                "predicted": float(probas[mask].mean()),
+                "actual": float(y[mask].mean()),
+                "count": int(mask.sum()),
+            }
+        )
     return out

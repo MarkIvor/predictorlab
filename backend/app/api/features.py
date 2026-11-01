@@ -1,14 +1,13 @@
-﻿import json
+import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_role
-from app.config import get_settings
 from app.core.features import builder
 from app.jobs import queue
-from app.models.database import Connection, Dataset, Model, ModelVersion, User
+from app.models.database import Connection, Dataset, User
 from app.services import pii as pii_service
 from app.services import sql_guard
 
@@ -48,6 +47,7 @@ def _conn_out(c: Connection) -> dict:
 @router.post("/connections", status_code=201)
 def create_connection(body: ConnectionIn, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     from app.services.security import encrypt_str
+
     c = Connection(
         user_id=user.id,
         name=body.name,
@@ -88,8 +88,7 @@ def test_connection(conn_id: int, user: User = Depends(require_role("admin", "bu
 
 
 @router.post("/connections/{conn_id}/preview")
-def preview_table(conn_id: int, body: PreviewIn,
-                  user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
+def preview_table(conn_id: int, body: PreviewIn, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     c = _own_connection(conn_id, user, db)
     conn = builder.connection_connector(c)
     try:
@@ -105,7 +104,7 @@ def preview_table(conn_id: int, body: PreviewIn,
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Не удалось прочитать таблицу: {exc}")
+        raise HTTPException(status_code=400, detail=f"Не удалось прочитать таблицу: {exc}") from None
     records = df.head(200).to_dict(orient="records")
     pii_map = pii_service.scan_columns([{"name": col} for col in df.columns], records)
     records = [pii_service.mask_record(r, pii_map) for r in records]
@@ -113,8 +112,7 @@ def preview_table(conn_id: int, body: PreviewIn,
 
 
 @router.post("/connections/{conn_id}/relations/{table}")
-def propose_relations(conn_id: int, table: str,
-                      user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
+def propose_relations(conn_id: int, table: str, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     c = _own_connection(conn_id, user, db)
     conn = builder.connection_connector(c)
     fks = conn.foreign_keys(table)
@@ -149,8 +147,7 @@ def feature_sql(dataset_id: str, user: User = Depends(require_role("admin", "bui
 
 
 @router.post("/datasets/{dataset_id}/entity-preview")
-def entity_preview(dataset_id: str, body: dict,
-                    user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
+def entity_preview(dataset_id: str, body: dict, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     d = db.get(Dataset, dataset_id)
     if d is None or (user.role != "admin" and d.user_id != user.id):
         raise HTTPException(status_code=404, detail="Датасет не найден")
@@ -162,8 +159,9 @@ def entity_preview(dataset_id: str, body: dict,
     try:
         df = builder.features_for_entities(d, [str(entity_id)])
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Не удалось собрать фичи: {exc}")
+        raise HTTPException(status_code=400, detail=f"Не удалось собрать фичи: {exc}") from None
     if df.empty:
         raise HTTPException(status_code=404, detail=f"Сущность «{entity_id}» не найдена в источнике")
     from app.services.jsonsafe import json_safe
+
     return {"features": json_safe(df.iloc[0].to_dict()), "sql": d.feature_sql}

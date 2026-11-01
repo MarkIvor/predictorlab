@@ -17,8 +17,14 @@ def test_insert_blocked():
 
 
 def test_update_delete_drop_blocked():
-    for sql in ("UPDATE orders SET a = 1", "DELETE FROM orders", "DROP TABLE orders",
-                "TRUNCATE orders", "ALTER TABLE orders ADD COLUMN x INT", "CREATE TABLE t (a int)"):
+    for sql in (
+        "UPDATE orders SET a = 1",
+        "DELETE FROM orders",
+        "DROP TABLE orders",
+        "TRUNCATE orders",
+        "ALTER TABLE orders ADD COLUMN x INT",
+        "CREATE TABLE t (a int)",
+    ):
         ok, _ = check_read_only(sql)
         assert not ok, sql
 

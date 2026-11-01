@@ -1,19 +1,18 @@
-﻿from fastapi import APIRouter, Depends, HTTPException
+import numpy as np
+import pandas as pd
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_role
 from app.config import get_settings
+from app.core.business import profit as profit_mod
 from app.core.guard import checks as guard_checks
 from app.core.ingest import io as ds_io
 from app.core.training import preprocess as prep
 from app.core.training.splits import make_splits
-from app.core.business import profit as profit_mod
 from app.jobs import queue
-from app.models.database import Dataset, Model, ModelVersion, User, utcnow
-from pathlib import Path
-import numpy as np
-import pandas as pd
+from app.models.database import Dataset, Model, ModelVersion, User
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 train_router = APIRouter()
@@ -77,15 +76,15 @@ def run_health(m: Model, dataset: Dataset, db: Session) -> dict:
     df = df[df[m.target_col].notna()].reset_index(drop=True)
     task_type = m.task_type
     if task_type != "timeseries":
-        report = guard_checks.run_pre_checks(df, m.target_col, task_type, dataset.event_time_col,
-                                             dataset.entity_col, dataset.columns_meta, m.excluded_cols or [])
+        report = guard_checks.run_pre_checks(
+            df, m.target_col, task_type, dataset.event_time_col, dataset.entity_col, dataset.columns_meta, m.excluded_cols or []
+        )
         spec = prep.build_feature_spec(dataset.columns_meta, m.target_col, m.excluded_cols or [])
         if len(df) > 200:
-            plan = make_splits(df, m.target_col, task_type, dataset.event_time_col, dataset.entity_col,
-                              seed=settings.seed)
-            split_guard = guard_checks.run_split_checks(df, prep.source_columns(spec), m.target_col,
-                                                       np.array(plan.train_idx), np.array(plan.holdout_idx),
-                                                       dataset.entity_col, split_kind=plan.kind)
+            plan = make_splits(df, m.target_col, task_type, dataset.event_time_col, dataset.entity_col, seed=settings.seed)
+            split_guard = guard_checks.run_split_checks(
+                df, prep.source_columns(spec), m.target_col, np.array(plan.train_idx), np.array(plan.holdout_idx), dataset.entity_col, split_kind=plan.kind
+            )
             report["checks"] = (report.get("checks") or []) + split_guard["checks"]
             report["split_kind"] = plan.kind
             if split_guard["verdict"] == "BLOCK":
@@ -104,6 +103,8 @@ def run_health(m: Model, dataset: Dataset, db: Session) -> dict:
 def _model_out(m: Model, db: Session, detailed: bool = False) -> dict:
     version = db.get(ModelVersion, m.active_version_id) if m.active_version_id else None
     dataset = db.get(Dataset, m.dataset_id)
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Датасет модели не найден")
     metrics = (version.metrics if version else None) or {}
     hero = metrics.get("roc_auc") or metrics.get("mae") or metrics.get("accuracy")
     out = {
@@ -129,10 +130,15 @@ def _model_out(m: Model, db: Session, detailed: bool = False) -> dict:
         out["threshold_info"] = m.threshold_info
         out["actionable"] = m.actionable
         out["schedule"] = m.schedule
-        out["metrics"] = (version.metrics if version else None)
+        out["metrics"] = version.metrics if version else None
         out["versions"] = [
-            {"id": v.id, "version": v.version, "status": v.status, "created_at": v.created_at.isoformat(),
-             "guard_verdict": ((v.leakage_report or {}).get("verdict"))}
+            {
+                "id": v.id,
+                "version": v.version,
+                "status": v.status,
+                "created_at": v.created_at.isoformat(),
+                "guard_verdict": ((v.leakage_report or {}).get("verdict")),
+            }
             for v in db.query(ModelVersion).filter(ModelVersion.model_id == m.id).order_by(ModelVersion.version).all()
         ]
     return out
@@ -182,7 +188,7 @@ def create_model(body: ModelCreateIn, user: User = Depends(require_role("admin",
     )
     db.add(m)
     db.commit()
-    report = run_health(m, dataset, db)
+    run_health(m, dataset, db)
     return _model_out(m, db, detailed=True)
 
 
@@ -193,8 +199,7 @@ def get_model(model_id: int, user: User = Depends(require_role("admin", "builder
 
 
 @router.patch("/{model_id}")
-def patch_model(model_id: int, body: ModelPatchIn,
-                user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
+def patch_model(model_id: int, body: ModelPatchIn, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     m = get_owned_model(model_id, user, db)
     if body.name is not None:
         m.name = body.name
@@ -210,6 +215,8 @@ def patch_model(model_id: int, body: ModelPatchIn,
         m.schedule = body.schedule or None
     if body.event_time_col is not None or body.entity_col is not None:
         dataset = db.get(Dataset, m.dataset_id)
+        if dataset is None:
+            raise HTTPException(status_code=404, detail="Датасет не найден")
         if body.event_time_col is not None:
             dataset.event_time_col = body.event_time_col or None
         if body.entity_col is not None:
@@ -241,24 +248,31 @@ def _recompute_threshold(m: Model, db: Session):
 def recheck_model(model_id: int, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     m = get_owned_model(model_id, user, db)
     dataset = db.get(Dataset, m.dataset_id)
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Датасет не найден")
     report = run_health(m, dataset, db)
     return report
 
 
 @router.post("/{model_id}/train", status_code=201)
-def train_model(model_id: int, body: TrainIn,
-                user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
+def train_model(model_id: int, body: TrainIn, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     m = get_owned_model(model_id, user, db)
     if m.status == "training":
         raise HTTPException(status_code=409, detail="Модель уже обучается")
     verdict = (m.guard_report or {}).get("verdict", "OK")
     if verdict == "BLOCK" and not body.guard_override:
-        raise HTTPException(status_code=400, detail="Leakage Guard вернул BLOCK. Исключите проблемные колонки или подтвердите снятие блокировки (guard_override)")
+        raise HTTPException(
+            status_code=400, detail="Leakage Guard вернул BLOCK. Исключите проблемные колонки или подтвердите снятие блокировки (guard_override)"
+        )
     m.status = "training"
     db.commit()
-    job = queue.create_job("train", user_id=user.id, model_id=m.id, dataset_id=m.dataset_id,
-                           payload={"mode": body.mode, "guard_override": body.guard_override,
-                                    "calibration": body.calibration})
+    job = queue.create_job(
+        "train",
+        user_id=user.id,
+        model_id=m.id,
+        dataset_id=m.dataset_id,
+        payload={"mode": body.mode, "guard_override": body.guard_override, "calibration": body.calibration},
+    )
     queue.submit(job)
     return {"job_id": job.id, "status": job.status}
 
@@ -266,6 +280,7 @@ def train_model(model_id: int, body: TrainIn,
 @router.delete("/{model_id}")
 def delete_model(model_id: int, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     import shutil
+
     m = get_owned_model(model_id, user, db)
     settings = get_settings()
     shutil.rmtree(settings.models_path / str(m.id), ignore_errors=True)
@@ -275,8 +290,7 @@ def delete_model(model_id: int, user: User = Depends(require_role("admin", "buil
 
 
 @router.post("/{model_id}/rollback")
-def rollback_model(model_id: int, body: RollbackIn,
-                  user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
+def rollback_model(model_id: int, body: RollbackIn, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     m = get_owned_model(model_id, user, db)
     version = db.query(ModelVersion).filter(ModelVersion.model_id == m.id, ModelVersion.version == body.version).first()
     if version is None:
@@ -288,8 +302,7 @@ def rollback_model(model_id: int, body: RollbackIn,
 
 
 @router.post("/{model_id}/profit")
-def set_profit(model_id: int, body: dict,
-               user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
+def set_profit(model_id: int, body: dict, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     m = get_owned_model(model_id, user, db)
     m.cost_matrix = body
     if m.task_type == "binary":
@@ -297,6 +310,8 @@ def set_profit(model_id: int, body: dict,
     elif m.task_type == "regression" and m.active_version_id:
         settings = get_settings()
         version = db.get(ModelVersion, m.active_version_id)
+        if version is None:
+            return
         ho_path = settings.storage_path / version.dir_path / "holdout_preds.parquet"
         if ho_path.exists():
             info = profit_mod.regression_cost(pd.read_parquet(ho_path), body)
@@ -321,9 +336,13 @@ def regenerate_card(model_id: int, user: User = Depends(require_role("admin", "b
     if v is None:
         raise HTTPException(status_code=400, detail="Модель ещё не обучена")
     from app.core.guard import llm_judge
+
     fields = {
-        "name": m.name, "task_type": m.task_type, "target": m.target_col,
-        "roc_auc": (v.metrics or {}).get("roc_auc"), "mae": (v.metrics or {}).get("mae"),
+        "name": m.name,
+        "task_type": m.task_type,
+        "target": m.target_col,
+        "roc_auc": (v.metrics or {}).get("roc_auc"),
+        "mae": (v.metrics or {}).get("mae"),
         "coverage": (v.metrics or {}).get("coverage"),
         "drivers": ", ".join(d["feature"] for d in ((v.metrics or {}).get("drivers") or [])[:5]),
         "baseline": (v.manifest or {}).get("split", {}).get("baseline", {}).get("detail"),
@@ -341,17 +360,20 @@ def regenerate_card(model_id: int, user: User = Depends(require_role("admin", "b
 
 
 @router.get("/{model_id}/card/export")
-def export_card(model_id: int, format: str = "md",
-                user: User = Depends(require_role("admin", "builder", "viewer")), db: Session = Depends(get_db)):
+def export_card(model_id: int, format: str = "md", user: User = Depends(require_role("admin", "builder", "viewer")), db: Session = Depends(get_db)):
     m = get_owned_model(model_id, user, db)
     v = db.get(ModelVersion, m.active_version_id) if m.active_version_id else None
     if v is None or not v.card_md:
         raise HTTPException(status_code=400, detail="Карточка ещё не создана")
     if format == "pdf":
         from fastapi.responses import FileResponse
+
         from app.core.registry.pdf import card_pdf
+
         path = card_pdf(m, v)
         return FileResponse(path, filename=f"model_card_{m.id}_v{v.version}.pdf", media_type="application/pdf")
     from fastapi.responses import Response
-    return Response(v.card_md, media_type="text/markdown; charset=utf-8",
-                    headers={"Content-Disposition": f'attachment; filename="model_card_{m.id}_v{v.version}.md"'})
+
+    return Response(
+        v.card_md, media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="model_card_{m.id}_v{v.version}.md"'}
+    )

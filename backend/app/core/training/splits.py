@@ -30,9 +30,9 @@ def _positions(index: np.ndarray) -> list[int]:
     return [int(i) for i in index]
 
 
-def make_splits(df: pd.DataFrame, target_col: str, task_type: str,
-                event_time_col: str | None, entity_col: str | None,
-                holdout_frac: float = 0.2, seed: int = 42) -> SplitPlan:
+def make_splits(
+    df: pd.DataFrame, target_col: str, task_type: str, event_time_col: str | None, entity_col: str | None, holdout_frac: float = 0.2, seed: int = 42
+) -> SplitPlan:
     n = len(df)
     rng = np.random.RandomState(seed)
     positions = np.arange(n)
@@ -82,6 +82,7 @@ def make_splits(df: pd.DataFrame, target_col: str, task_type: str,
     rest = np.array(plan.train_idx)
     if entity_col and entity_col in df.columns:
         from sklearn.model_selection import GroupKFold
+
         groups = df.iloc[rest][entity_col].astype(str).to_numpy()
         n_groups = pd.Series(groups).nunique()
         k = 4 if n_groups >= 8 else 2
@@ -91,9 +92,10 @@ def make_splits(df: pd.DataFrame, target_col: str, task_type: str,
             folds.append((_positions(rest[tr_pos]), _positions(rest[va_pos])))
         plan.cv = folds
         plan.kind = "group"
-        calib = folds[-1][1]
+        folds[-1][1]
     else:
         from sklearn.model_selection import KFold, StratifiedKFold
+
         y = target.iloc[rest]
         k = 5 if len(rest) >= 500 else 3
         splitter = (
@@ -108,7 +110,7 @@ def make_splits(df: pd.DataFrame, target_col: str, task_type: str,
         plan.calib_idx = folds[-1][1]
 
     if not plan.calib_idx:
-        plan.calib_idx = _positions(np.array(plan.train_idx)[-max(1, len(plan.train_idx) // 10):])
+        plan.calib_idx = _positions(np.array(plan.train_idx)[-max(1, len(plan.train_idx) // 10) :])
     plan.baseline = _baseline(target.iloc[train_idx], task_type)
     return plan
 

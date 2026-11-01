@@ -42,8 +42,7 @@ def build_feature_spec(columns_meta: list[dict], target_col: str, excluded_cols:
 
 
 def source_columns(spec: dict) -> list[str]:
-    return (spec.get("numeric", []) + spec.get("boolean", []) + list(spec.get("datetime", {}).keys())
-            + spec.get("categorical", []))
+    return list(spec.get("numeric", [])) + list(spec.get("boolean", [])) + list(spec.get("datetime", {}).keys()) + list(spec.get("categorical", []))
 
 
 def transform(df: pd.DataFrame, spec: dict) -> pd.DataFrame:
@@ -82,8 +81,22 @@ def transform(df: pd.DataFrame, spec: dict) -> pd.DataFrame:
 
 def _to_bool(series: pd.Series) -> pd.Series:
     s = series.astype(str).str.strip().str.lower()
-    mapping = {"true": 1.0, "yes": 1.0, "y": 1.0, "да": 1.0, "1": 1.0, "t": 1.0, "истина": 1.0,
-               "false": 0.0, "no": 0.0, "n": 0.0, "нет": 0.0, "0": 0.0, "f": 0.0, "ложь": 0.0}
+    mapping = {
+        "true": 1.0,
+        "yes": 1.0,
+        "y": 1.0,
+        "да": 1.0,
+        "1": 1.0,
+        "t": 1.0,
+        "истина": 1.0,
+        "false": 0.0,
+        "no": 0.0,
+        "n": 0.0,
+        "нет": 0.0,
+        "0": 0.0,
+        "f": 0.0,
+        "ложь": 0.0,
+    }
     result = s.map(mapping)
     return result.where(series.notna(), np.nan)
 

@@ -1,4 +1,5 @@
 """E2E Feature Builder: реляционная БД → витрина → модель → entity_id-прогноз. Тест 13.3 (point-in-time)."""
+
 import sqlite3
 import sys
 import time
@@ -23,6 +24,7 @@ def make_sqlite_db(path: Path):
 
 def main():
     import os
+
     db_path = DEMO / f"rel_{os.getpid()}.db"
     make_sqlite_db(db_path)
 
@@ -31,9 +33,7 @@ def main():
     assert r.status_code == 200, r.text
 
     print("== 1. Подключение к SQLite (read-only) ==")
-    r = client.post("/api/connections", json={
-        "name": "rel_demo", "db_type": "sqlite",
-        "params": {"database": str(db_path)}})
+    r = client.post("/api/connections", json={"name": "rel_demo", "db_type": "sqlite", "params": {"database": str(db_path)}})
     assert r.status_code == 201, r.text
     conn_id = r.json()["id"]
     r = client.post(f"/api/connections/{conn_id}/test")
@@ -51,14 +51,17 @@ def main():
         "n_snapshots": 4,
         "horizon_days": 45,
         "children": [
-            {"table": "orders", "fk": "customer_id", "datetime_col": "order_date",
-             "windows": [7, 30, 90], "rfm": True,
-             "agg_columns": [{"fn": "sum", "col": "amount"}, {"fn": "mean", "col": "amount"}]},
-            {"table": "tickets", "fk": "customer_id", "datetime_col": "created_at",
-             "windows": [30, 90], "rfm": False},
+            {
+                "table": "orders",
+                "fk": "customer_id",
+                "datetime_col": "order_date",
+                "windows": [7, 30, 90],
+                "rfm": True,
+                "agg_columns": [{"fn": "sum", "col": "amount"}, {"fn": "mean", "col": "amount"}],
+            },
+            {"table": "tickets", "fk": "customer_id", "datetime_col": "created_at", "windows": [30, 90], "rfm": False},
         ],
-        "target": {"table": "orders", "fk": "customer_id", "datetime_col": "order_date",
-                   "type": "count_in_window", "min_count": 1},
+        "target": {"table": "orders", "fk": "customer_id", "datetime_col": "order_date", "type": "count_in_window", "min_count": 1},
     }
     r = client.post("/api/features/build", json={"name": "b2b_mart", "config": config})
     assert r.status_code == 202, r.text
@@ -79,10 +82,9 @@ def main():
     sql = r.json()["sql"]
     assert sql, "SQL витрины пуст"
     agg_blocks = sql.count("< snap.t0")
-    target_window = ("WHERE TRY_CAST(c." in sql) and (f"INTERVAL 45 DAY" in sql)
     assert agg_blocks >= 4, f"агрегатов с < snap.t0 должно быть много, найдено {agg_blocks}"
     assert "AND" in sql and ">= snap.t0" in sql, "таргет должен считать окно [t0, t0+horizon)"
-    banned = [line for line in sql.splitlines() if ">= snap.t0" in line and "t0 + INTERVAL" not in line and "a_target" not in sql and line.strip().startswith("WHERE")]
+    [line for line in sql.splitlines() if ">= snap.t0" in line and "t0 + INTERVAL" not in line and "a_target" not in sql and line.strip().startswith("WHERE")]
     ok_windows = all(("< snap.t0" in line) for line in sql.splitlines() if "WHERE" in line and "INTERVAL" in line and "t0 + INTERVAL 45" not in line)
     assert ok_windows, "у каждого агрегата нижняя граница окна, но события только < snap.t0"
     print(f"  PASS point-in-time: {agg_blocks} агрегатов с '< snap.t0', таргет в окне [t0, t0+45)")
@@ -91,13 +93,12 @@ def main():
     r = client.get(f"/api/datasets/{dataset_id}")
     ds = r.json()
     assert ds["entity_col"] == "customer_id" and ds["event_time_col"] == "t0"
-    r = client.post("/api/models", json={"dataset_id": dataset_id, "name": "b2b_buy45",
-                                         "target_col": "target", "event_time_col": "t0"})
+    r = client.post("/api/models", json={"dataset_id": dataset_id, "name": "b2b_buy45", "target_col": "target", "event_time_col": "t0"})
     assert r.status_code == 201, r.text[:300]
     model = r.json()
     model_id = model["id"]
     assert model["guard_report"]["split_kind"] == "out_of_time", model["guard_report"]
-    excluded = list(model["excluded_cols"])
+    list(model["excluded_cols"])
     r = client.patch(f"/api/models/{model_id}", json={"excluded_cols": []})
     r = client.post(f"/api/models/{model_id}/train", json={"mode": "quick"})
     assert r.status_code == 201, r.text[:300]

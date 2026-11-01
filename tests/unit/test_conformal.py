@@ -1,5 +1,4 @@
 import numpy as np
-
 from app.core.uncertainty.conformal import (
     calibrate_classification,
     calibrate_regression,
@@ -17,7 +16,7 @@ def test_regression_coverage_within_5pp():
     pred_test = rng.normal(0, 1, n_test)
     y_test = pred_test + rng.normal(0, 2, n_test)
     covered = 0
-    for p, y in zip(pred_test, y_test):
+    for p, y in zip(pred_test, y_test, strict=False):
         lo, hi = regression_interval(p, conformal)
         covered += lo <= y <= hi
     coverage = covered / n_test
@@ -34,7 +33,7 @@ def test_classification_aps_coverage_one_sided():
     y_test = rng.integers(0, 2, n_test)
     proba_test = np.clip(0.3 + 0.4 * y_test + rng.normal(0, 0.15, n_test), 0.01, 0.99)
     covered = 0
-    for p, y in zip(proba_test, y_test):
+    for p, y in zip(proba_test, y_test, strict=False):
         s = predict_set(np.array([1 - p, p]), conformal, ["0", "1"])
         covered += str(int(y)) in s
     coverage = covered / n_test

@@ -1,10 +1,9 @@
 import time
+from typing import Any
 
 import numpy as np
-import pandas as pd
 
 from app.core.predict import engine
-from app.services.metrics import PREDICT_LATENCY
 
 
 def predict_proba_one(bundle: dict, record: dict, threshold: float | None = None) -> dict:
@@ -12,12 +11,12 @@ def predict_proba_one(bundle: dict, record: dict, threshold: float | None = None
     return results[0]
 
 
-def _candidate_values(feature: str, cfg: dict, current) -> list:
+def _candidate_values(feature: str, cfg: dict, current: Any) -> list:
     if "allowed_values" in cfg:
         return [v for v in cfg["allowed_values"] if v != current]
     lo, hi = float(cfg.get("min", current)), float(cfg.get("max", current))
     direction = cfg.get("direction", "both")
-    values = []
+    values: list[Any] = []
     if direction in ("both", "down") and current is not None and lo < float(current):
         values.extend(np.linspace(float(current), lo, 6)[1:])
     if direction in ("both", "up") and current is not None and hi > float(current):
@@ -25,7 +24,7 @@ def _candidate_values(feature: str, cfg: dict, current) -> list:
     return values
 
 
-def _change_cost(feature: str, cfg: dict, old, new) -> float:
+def _change_cost(feature: str, cfg: dict, old: Any, new: Any) -> float:
     if "allowed_values" in cfg:
         return float(cfg.get("cost_flat", 0))
     cost_per_unit = float(cfg.get("cost_per_unit", 0))
@@ -35,9 +34,9 @@ def _change_cost(feature: str, cfg: dict, old, new) -> float:
         return 0.0
 
 
-def find_counterfactual(bundle: dict, record: dict, actionable: dict, threshold: float,
-                         direction: str = "below", timeout: float = 10.0,
-                         cost_matrix: dict | None = None) -> dict | None:
+def find_counterfactual(
+    bundle: dict, record: dict, actionable: dict, threshold: float, direction: str = "below", timeout: float = 10.0, cost_matrix: dict | None = None
+) -> dict | None:
     start = time.monotonic()
     base = predict_proba_one(bundle, record, threshold)
     p0 = base.get("probability")
@@ -47,14 +46,11 @@ def find_counterfactual(bundle: dict, record: dict, actionable: dict, threshold:
     if task != "binary":
         return None
     if direction == "below" and p0 < threshold:
-        return {"changes": {}, "cost_rub": 0.0, "probability_before": p0, "probability_after": p0,
-                "already_ok": True, "expected_roi_rub": 0.0}
+        return {"changes": {}, "cost_rub": 0.0, "probability_before": p0, "probability_after": p0, "already_ok": True, "expected_roi_rub": 0.0}
     if direction == "above" and p0 >= threshold:
-        return {"changes": {}, "cost_rub": 0.0, "probability_before": p0, "probability_after": p0,
-                "already_ok": True, "expected_roi_rub": 0.0}
+        return {"changes": {}, "cost_rub": 0.0, "probability_before": p0, "probability_after": p0, "already_ok": True, "expected_roi_rub": 0.0}
 
-    features = [f for f, cfg in (actionable or {}).items()
-                if f in bundle["schema"]["input_schema"]["properties"]]
+    features = [f for f, cfg in (actionable or {}).items() if f in bundle["schema"]["input_schema"]["properties"]]
     rnd = np.random.RandomState(42)
     best_result = None
     deadline = start + max(1.0, timeout)
@@ -75,7 +71,7 @@ def find_counterfactual(bundle: dict, record: dict, actionable: dict, threshold:
             candidates = _candidate_values(feature, cfg, cur_val)
             if not candidates:
                 continue
-            rows = []
+            rows: list[Any] = []
             kept = []
             for v in candidates:
                 trial = dict(current)
@@ -113,16 +109,18 @@ def find_counterfactual(bundle: dict, record: dict, actionable: dict, threshold:
                 p_cur = p
         success = (p_cur < threshold) if direction == "below" else (p_cur >= threshold)
         if success and (best_result is None or total_cost < best_result["cost_rub"]):
-            best_result = {"changes": changes, "cost_rub": round(total_cost, 2),
-                           "probability_before": round(p0, 4), "probability_after": round(p_cur, 4)}
+            best_result = {"changes": changes, "cost_rub": round(total_cost, 2), "probability_before": round(p0, 4), "probability_after": round(p_cur, 4)}
     if best_result is None:
         return None
 
     roi = None
     if cost_matrix and direction in ("below", "above"):
         benefit = float(cost_matrix.get("benefit_tp", 0) or 0)
-        delta = (best_result["probability_before"] - best_result["probability_after"]) if direction == "below" \
+        delta = (
+            (best_result["probability_before"] - best_result["probability_after"])
+            if direction == "below"
             else (best_result["probability_after"] - best_result["probability_before"])
+        )
         roi = round(benefit * delta - best_result["cost_rub"], 2)
     best_result["expected_roi_rub"] = roi
     best_result["already_ok"] = False

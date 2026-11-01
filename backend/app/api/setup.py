@@ -1,4 +1,4 @@
-﻿import json
+import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -33,44 +33,39 @@ def snippets(model_id: int, user: User = Depends(get_current_user), db: Session 
     body_json = json.dumps(body, ensure_ascii=False)
     url = f"{settings.public_base_url.replace(':3000', ':8000')}/api/v1/models/{m.id}/predict"
 
-    curl = (
-        f'curl -X POST "{url}" \\\n'
-        f'  -H "Authorization: Bearer pl_live_ВАШ_КЛЮЧ" \\\n'
-        f'  -H "Content-Type: application/json" \\\n'
-        f'  -d \'{body_json}\''
-    )
+    curl = f'curl -X POST "{url}" \\\n  -H "Authorization: Bearer pl_live_ВАШ_КЛЮЧ" \\\n  -H "Content-Type: application/json" \\\n  -d \'{body_json}\''
     python = (
         "import requests\n\n"
-        f'response = requests.post(\n'
+        f"response = requests.post(\n"
         f'    "{url}",\n'
         f'    headers={{"Authorization": "Bearer pl_live_ВАШ_КЛЮЧ"}},\n'
-        f'    json={body_json and json.dumps(body, ensure_ascii=False)},\n'
-        f'    timeout=30,\n'
-        f')\n'
-        f'print(response.json())'
+        f"    json={body_json and json.dumps(body, ensure_ascii=False)},\n"
+        f"    timeout=30,\n"
+        f")\n"
+        f"print(response.json())"
     )
     javascript = (
         f'const response = await fetch("{url}", {{\n'
         f'  method: "POST",\n'
-        f'  headers: {{\n'
+        f"  headers: {{\n"
         f'    "Authorization": "Bearer pl_live_ВАШ_КЛЮЧ",\n'
         f'    "Content-Type": "application/json",\n'
-        f'  }},\n'
-        f'  body: JSON.stringify({json.dumps(body, ensure_ascii=False)}),\n'
-        f'}});\n'
-        f'const data = await response.json();\n'
-        f'console.log(data.predictions[0]);'
+        f"  }},\n"
+        f"  body: JSON.stringify({json.dumps(body, ensure_ascii=False)}),\n"
+        f"}});\n"
+        f"const data = await response.json();\n"
+        f"console.log(data.predictions[0]);"
     )
     one_c = (
         f'Соединение = Новый HTTPСоединение("{settings.public_base_url.replace("http://", "").replace(":3000", ":8000")}", 8000);\n'
         f'Запрос = Новый HTTPЗапрос("/api/v1/models/{m.id}/predict");\n'
         f'Запрос.Заголовки.Вставить("Authorization", "Bearer pl_live_ВАШ_КЛЮЧ");\n'
         f'Запрос.Заголовки.Вставить("Content-Type", "application/json");\n'
-        f'Запрос.УстановитьТелоИзСтроки(\'{body_json}\', КодировкаТекста.UTF8);\n'
+        f"Запрос.УстановитьТелоИзСтроки('{body_json}', КодировкаТекста.UTF8);\n"
         f'Ответ = Соединение.ОтправитьДляОбработки(Запрос, "POST");\n'
-        f'Если Ответ.КодСостояния = 200 Тогда\n'
-        f'    Результат = Ответ.ПолучитьТелоКакСтроку();\n'
-        f'КонецЕсли;'
+        f"Если Ответ.КодСостояния = 200 Тогда\n"
+        f"    Результат = Ответ.ПолучитьТелоКакСтроку();\n"
+        f"КонецЕсли;"
     )
     return {
         "model_id": m.id,
@@ -87,17 +82,18 @@ def snippets(model_id: int, user: User = Depends(get_current_user), db: Session 
 
 @router.get("/llm/status")
 def llm_status(user: User = Depends(get_current_user)):
-    settings = get_settings()
+    get_settings()
     from app.llm.client import llm_config
+
     cfg = llm_config()
     return {"enabled": cfg["enabled"], "model": cfg["model"] if cfg["enabled"] else None}
 
 
 @router.post("/llm/target-from-words")
 def target_from_words(body: dict, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
-    from app.api.deps import get_current_user as _gcu
-    from app.models.database import Dataset
     from app.core.guard import llm_judge
+    from app.models.database import Dataset
+
     goal = (body or {}).get("goal", "").strip()
     dataset_id = (body or {}).get("dataset_id")
     if not goal:
@@ -105,18 +101,18 @@ def target_from_words(body: dict, user: User = Depends(require_role("admin", "bu
     d = db.get(Dataset, dataset_id) if dataset_id else None
     if d is None:
         raise HTTPException(status_code=422, detail="Укажите dataset_id")
-    result = llm_judge.suggest_target(goal, d.columns_meta or [])
+    result = llm_judge.suggest_target(goal, list(d.columns_meta or []))
     if result is None:
         raise HTTPException(status_code=503, detail="LLM недоступна — задайте таргет вручную")
-    return {"target_col": result.target_col, "task_type": result.task_type,
-            "sql": result.sql, "explanation": result.explanation}
+    return {"target_col": result.target_col, "task_type": result.task_type, "sql": result.sql, "explanation": result.explanation}  # type: ignore[typeddict-item]
 
 
 @router.post("/llm/feature-suggestions")
 def feature_suggestions(body: dict, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
-    from app.models.database import Connection, Dataset
     from app.core.features import builder
     from app.core.guard import llm_judge
+    from app.models.database import Connection
+
     config = (body or {}).get("config") or {}
     conn_id = config.get("connection_id")
     if not conn_id:
@@ -135,18 +131,23 @@ def feature_suggestions(body: dict, user: User = Depends(require_role("admin", "
     result = llm_judge.suggest_features(config, describes)
     if result is None:
         raise HTTPException(status_code=503, detail="LLM недоступна")
-    return {"features": result.features}
+    if hasattr(result, "features"):
+        return {"features": list(result.features)}
+    return {"features": []}
 
 
 @router.post("/llm/judge/{model_id}")
 def llm_judge_model(model_id: int, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
-    from app.models.database import Dataset, Model
     from app.core.guard import llm_judge
+    from app.models.database import Dataset, Model
+
     m = db.get(Model, model_id)
     if m is None or (user.role != "admin" and m.user_id != user.id):
         raise HTTPException(status_code=404, detail="Модель не найдена")
     d = db.get(Dataset, m.dataset_id)
-    result = llm_judge.judge_columns(d.columns_meta or [], m.target_col, m.task_type)
+    if d is None:
+        raise HTTPException(status_code=422, detail="Укажите dataset_id")
+    result = llm_judge.judge_columns(list(d.columns_meta or []), m.target_col, m.task_type)
     if result is None:
         raise HTTPException(status_code=503, detail="LLM недоступна — работают детерминированные проверки")
     return result

@@ -1,5 +1,4 @@
 import hashlib
-import io
 import secrets
 from pathlib import Path
 
@@ -27,6 +26,7 @@ def detect_encoding(raw: bytes) -> str:
         pass
     try:
         from charset_normalizer import from_bytes
+
         match = from_bytes(raw[:256_000]).best()
         if match and match.encoding:
             return match.encoding
@@ -41,13 +41,14 @@ def detect_encoding(raw: bytes) -> str:
 
 def sniff_separator(text: str) -> str:
     import csv
+
     sample = "\n".join(text.splitlines()[:20])
     try:
         dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|;")
         return dialect.delimiter
     except csv.Error:
         counts = {d: sample.count(d) for d in [",", ";", "\t", "|"]}
-        best = max(counts, key=counts.get)
+        best = max(counts, key=lambda k: counts[k])
         return best if counts[best] > 0 else ","
 
 
@@ -65,13 +66,15 @@ def read_dataframe(path: Path, sheet: str | None) -> pd.DataFrame:
         return read_csv_smart(path)
     if suffix in (".xlsx", ".xls"):
         import openpyxl
+
         book = openpyxl.load_workbook(path, read_only=True)
         sheets = book.sheetnames
         book.close()
         if sheet is None and len(sheets) > 1:
             raise IngestError(
                 f"В файле несколько листов: {', '.join(sheets)}. Выберите лист для загрузки.",
-                status=400, hint={"sheets": sheets},
+                status=400,
+                hint={"sheets": sheets},
             )
         return pd.read_excel(path, sheet_name=sheet or 0, engine="openpyxl")
     if suffix == ".parquet":
@@ -80,7 +83,7 @@ def read_dataframe(path: Path, sheet: str | None) -> pd.DataFrame:
 
 
 def sample_rows(df: pd.DataFrame, n: int, seed: int = 42) -> pd.DataFrame:
-    settings = get_settings()
+    get_settings()
     if len(df) <= n:
         return df
     return df.sample(n=min(n, len(df)), random_state=seed).sort_index().reset_index(drop=True)
@@ -90,9 +93,9 @@ def ingest_dataframe(df: pd.DataFrame) -> tuple[str, int, int, list[dict], str, 
     settings = get_settings()
     if df.shape[1] > settings.max_columns:
         raise IngestError(
-            f"В данных {df.shape[1]} колонок — превышен лимит {settings.max_columns}. "
-            "Удалите лишние колонки или поднимите лимит MAX_COLUMNS в .env",
-            status=413, hint={"limit": settings.max_columns, "actual": int(df.shape[1])},
+            f"В данных {df.shape[1]} колонок — превышен лимит {settings.max_columns}. Удалите лишние колонки или поднимите лимит MAX_COLUMNS в .env",
+            status=413,
+            hint={"limit": settings.max_columns, "actual": int(df.shape[1])},
         )
     if len(df) > settings.max_rows:
         raise IngestError(
@@ -132,7 +135,5 @@ def stratified_sample(df: pd.DataFrame, n: int, target_col: str, seed: int = 42)
     if target_col not in df.columns:
         raise IngestError(f"Колонки «{target_col}» нет в данных", status=400)
     frac = min(1.0, n / max(len(df), 1))
-    sampled = df.groupby(target_col, group_keys=False, dropna=False).apply(
-        lambda g: g.sample(frac=frac, random_state=seed)
-    )
+    sampled = df.groupby(target_col, group_keys=False, dropna=False).apply(lambda g: g.sample(frac=frac, random_state=seed))
     return sampled.sort_index().head(n).reset_index(drop=True)

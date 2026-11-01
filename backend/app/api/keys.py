@@ -43,7 +43,7 @@ def _own_keys(db: Session, user: User):
     return q.order_by(ApiKey.id.desc()).all()
 
 
-def _validate_model_ids(db: Session, user: User, model_ids: list[int]):
+def _validate_model_ids(db: Session, user: User, model_ids: list) -> None:
     if user.role == "admin":
         return
     own = {m.id for m in db.query(Model.id).filter(Model.user_id == user.id).all()}
@@ -83,7 +83,7 @@ def patch_key(key_id: int, body: KeyPatchIn, user: User = Depends(require_role("
     if body.name is not None:
         k.name = body.name
     if body.model_ids is not None:
-        _validate_model_ids(db, user, [m for m in body.model_ids if m != "all"])
+        _validate_model_ids(db, user, [m for m in body.model_ids if m != "all"])  # type: ignore[list-item]
         k.model_ids = list(body.model_ids)
     if body.rate_limit_rpm is not None:
         k.rate_limit_rpm = max(0, body.rate_limit_rpm)

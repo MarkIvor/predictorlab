@@ -1,7 +1,7 @@
 import base64
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from cryptography.fernet import Fernet
@@ -46,7 +46,7 @@ def create_token(user_id: int, role: str, token_type: str = "access") -> str:
         "sub": str(user_id),
         "role": role,
         "type": token_type,
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=ttl),
+        "exp": datetime.now(UTC) + timedelta(minutes=ttl),
     }
     return jwt.encode(payload, _jwt_secret(), algorithm="HS256")
 

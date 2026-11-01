@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.security.utils import get_authorization_scheme_param
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db, require_role
-from app.models.database import User, utcnow
+from app.models.database import User
 from app.services import security
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])

@@ -12,11 +12,7 @@ SYSTEM_JUDGE = (
 def user_judge(columns_meta: list[dict], target_col: str, task_type: str) -> str:
     lines = [f"Таргет: {target_col}. Тип задачи: {task_type}. Колонки:"]
     for c in columns_meta[:200]:
-        stats = c.get("stats") or {}
-        lines.append(
-            f"- {c['name']} | тип: {c.get('type')} | уникальных: {c.get('nunique')} | "
-            f"пропуски: {c.get('missing_pct')}% | топ-значения: {stats.get('top', c.get('sample'))}"
-        )
+        lines.append(f"- {c['name']} | тип: {c.get('type')} | уникальных: {c.get('nunique')} | пропуски: {c.get('missing_pct')}%")
     return "\n".join(lines)
 
 
@@ -62,7 +58,7 @@ SYSTEM_CARD = (
     "Ты — бизнес-аналитик. Тебе дают посчитанные поля Model Card. Напиши живой текст по-русски: "
     "3-5 абзацев — что модель умеет, кому полезна, какие главные драйверы, как читать метрики. "
     "ЗАПРЕЩЕНО: придумывать новые числа, округлять иначе, добавлять проценты, которых нет во входных данных. "
-    "Используй только числа, которые есть в полях. Верни JSON: {\"text\": \"...\"}."
+    'Используй только числа, которые есть в полях. Верни JSON: {"text": "..."}.'
 )
 
 

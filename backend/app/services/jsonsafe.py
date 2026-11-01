@@ -23,6 +23,7 @@ def json_safe(obj):
         return [json_safe(v) for v in obj]
     try:
         import pandas as pd
+
         if isinstance(obj, (pd.Timestamp,)):
             return obj.isoformat()
         if obj is pd.NaT:

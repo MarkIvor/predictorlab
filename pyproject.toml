@@ -40,11 +40,72 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "requests>=2.31", "hypothesis>=6"]
+dev = [
+  "pytest>=8", "pytest-asyncio>=0.23", "pytest-cov>=6", "pytest-timeout>=2.3",
+  "hypothesis>=6", "requests>=2.31", "ruff>=0.17", "mypy>=2.4",
+  "bandit>=1.8", "pip-audit>=2.7", "pre-commit>=4",
+  "playwright>=1.50",
+]
 tabpfn = ["tabpfn>=2"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["backend", "mcp/src"]
 testpaths = ["tests"]
+markers = [
+  "unit: детерминированные юнит-тесты",
+  "property: property-based (hypothesis)",
+  "integration: API через TestClient на реальных DuckDB/SQLite",
+  "ml: обучение на золотых датасетах и инварианты модели",
+  "llm: контракт LLM-части на мок-клиенте и фикстурах",
+  "security: безопасность: ключи, доступ, ПДн в логах",
+  "e2e: сквозные сценарии (Playwright)",
+]
 filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 160
+target-version = "py312"
+extend-exclude = [".venv", "frontend/node_modules", "storage", "data", "docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+# E501: длинные строки SQL допустимы; B008: паттерн FastAPI Depends в дефолтных аргументах
+ignore = ["E501", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+"tests/e2e/*" = ["E402"]
+"bench/*" = ["E402"]
+"demo-data/*" = ["E402"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+exclude = ["(?x)(^backend/app/core/(training|predict)/.*$)"]
+
+[[tool.mypy.overrides]]
+module = ["app.core.*"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_return_any = true
+
+[[tool.mypy.overrides]]
+module = ["app.*"]
+disallow_untyped_defs = false
+
+[tool.coverage.run]
+source = ["backend/app/core"]
+omit = ["*/__init__.py"]
+
+[tool.coverage.report]
+precision = 1
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

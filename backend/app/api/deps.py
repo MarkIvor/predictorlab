@@ -49,7 +49,7 @@ def require_role(*roles: str):
     return dep
 
 
-def get_api_key_or_user(request: Request, db: Session = Depends(get_db)):
+def get_api_key_or_user(request: Request, db: Session = Depends(get_db)) -> tuple[object, str]:
     header = request.headers.get("authorization", "")
     scheme, param = get_authorization_scheme_param(header)
     if scheme.lower() == "bearer" and param.startswith("pl_live_"):

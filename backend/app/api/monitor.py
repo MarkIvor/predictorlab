@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 from datetime import timedelta
 
@@ -8,10 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_role
 from app.config import get_settings
-from app.core.predict import engine
 from app.jobs import queue
-from app.models.database import (DriftReport, Feedback, Model, ModelVersion, PredictionLog,
-                                  SessionLocal, User, utcnow)
+from app.models.database import DriftReport, Feedback, Model, PredictionLog, SessionLocal, User, utcnow
 
 logger = logging.getLogger("predictorlab.monitor")
 
@@ -36,8 +34,7 @@ def run_monitor(model_id: int, user: User = Depends(require_role("admin", "build
     m = _owned_model(model_id, user, db)
     if not m.active_version_id:
         raise HTTPException(status_code=400, detail="Модель ещё не обучена")
-    job = queue.create_job("drift", user_id=user.id, model_id=m.id,
-                           payload={"version_id": m.active_version_id, "window_days": 30})
+    job = queue.create_job("drift", user_id=user.id, model_id=m.id, payload={"version_id": m.active_version_id, "window_days": 30})
     queue.submit(job)
     return {"job_id": job.id}
 
@@ -48,12 +45,13 @@ def monitor(model_id: int, user: User = Depends(require_role("admin", "builder",
     reports = db.query(DriftReport).filter(DriftReport.model_id == m.id).order_by(DriftReport.created_at.desc()).limit(20).all()
     return [
         {
-            "id": r.id, "window_days": r.window_days, "status": r.status,
+            "id": r.id,
+            "window_days": r.window_days,
+            "status": r.status,
             "psi_prediction": r.psi_prediction,
-            "top_psi": dict(sorted(
-                [(k, v) for k, v in (r.psi_features or {}).items() if v is not None],
-                key=lambda kv: -kv[1])[:10]),
-            "live_metrics": r.live_metrics, "report": r.report,
+            "top_psi": dict(sorted([(k, v) for k, v in (r.psi_features or {}).items() if v is not None], key=lambda kv: -kv[1])[:10]),
+            "live_metrics": r.live_metrics,
+            "report": r.report,
             "created_at": r.created_at.isoformat(),
         }
         for r in reports
@@ -61,15 +59,17 @@ def monitor(model_id: int, user: User = Depends(require_role("admin", "builder",
 
 
 @router.get("/{model_id}/predictions")
-def recent_predictions(model_id: int, limit: int = 50,
-                       user: User = Depends(require_role("admin", "builder", "viewer")), db: Session = Depends(get_db)):
+def recent_predictions(model_id: int, limit: int = 50, user: User = Depends(require_role("admin", "builder", "viewer")), db: Session = Depends(get_db)):
     m = _owned_model(model_id, user, db)
-    rows = db.query(PredictionLog).filter(PredictionLog.model_id == m.id).order_by(
-        PredictionLog.created_at.desc()).limit(max(1, min(limit, 500))).all()
+    rows = db.query(PredictionLog).filter(PredictionLog.model_id == m.id).order_by(PredictionLog.created_at.desc()).limit(max(1, min(limit, 500))).all()
     return [
         {
-            "prediction_id": p.prediction_id, "mode": p.mode, "entity_id": p.entity_id,
-            "input": p.input, "output": p.output, "latency_ms": p.latency_ms,
+            "prediction_id": p.prediction_id,
+            "mode": p.mode,
+            "entity_id": p.entity_id,
+            "input": p.input,
+            "output": p.output,
+            "latency_ms": p.latency_ms,
             "created_at": p.created_at.isoformat(),
         }
         for p in rows
@@ -77,8 +77,7 @@ def recent_predictions(model_id: int, limit: int = 50,
 
 
 @router.post("/{model_id}/feedback", status_code=201)
-def add_feedback(model_id: int, body: FeedbackUIIn,
-                 user: User = Depends(require_role("admin", "builder", "viewer")), db: Session = Depends(get_db)):
+def add_feedback(model_id: int, body: FeedbackUIIn, user: User = Depends(require_role("admin", "builder", "viewer")), db: Session = Depends(get_db)):
     m = _owned_model(model_id, user, db)
     if body.actual is None or (not body.prediction_id and not body.entity_id):
         raise HTTPException(status_code=422, detail="Укажите actual и prediction_id или entity_id")
@@ -96,10 +95,10 @@ def add_feedback(model_id: int, body: FeedbackUIIn,
 
 
 @router.post("/{model_id}/playbook", status_code=202)
-async def run_playbook(model_id: int, file: UploadFile,
-                       user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
+async def run_playbook(model_id: int, file: UploadFile, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     import secrets
     from pathlib import Path
+
     m = _owned_model(model_id, user, db)
     if not m.active_version_id:
         raise HTTPException(status_code=400, detail="Модель ещё не обучена")
@@ -117,8 +116,7 @@ async def run_playbook(model_id: int, file: UploadFile,
     with tmp_path.open("wb") as f:
         while chunk := file.file.read(1024 * 1024):
             f.write(chunk)
-    job = queue.create_job("playbook", user_id=user.id, model_id=m.id,
-                           payload={"input_path": str(tmp_path), "version_id": m.active_version_id})
+    job = queue.create_job("playbook", user_id=user.id, model_id=m.id, payload={"input_path": str(tmp_path), "version_id": m.active_version_id})
     queue.submit(job)
     return {"job_id": job.id}
 
@@ -159,15 +157,16 @@ async def schedule_loop():
                     last = schedule.get("last_run")
                     if last:
                         from datetime import datetime
+
                         try:
                             last_dt = datetime.fromisoformat(last)
                         except ValueError:
                             last_dt = None
                         if last_dt and (utcnow() - last_dt).days < interval_days:
                             continue
-                    job = queue.create_job("train", user_id=m.user_id, model_id=m.id, dataset_id=m.dataset_id,
-                                           payload={"mode": schedule.get("mode", "quick"),
-                                                    "scheduled": True})
+                    job = queue.create_job(
+                        "train", user_id=m.user_id, model_id=m.id, dataset_id=m.dataset_id, payload={"mode": schedule.get("mode", "quick"), "scheduled": True}
+                    )
                     queue.submit(job)
                     schedule["last_run"] = utcnow().isoformat()
                     m.schedule = schedule

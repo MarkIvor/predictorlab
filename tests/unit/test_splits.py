@@ -1,17 +1,18 @@
 import numpy as np
 import pandas as pd
-
 from app.core.training.splits import make_splits
 
 
 def make_temporal_df(n: int = 3000, seed: int = 3) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
-    return pd.DataFrame({
-        "date": pd.date_range("2024-01-01", periods=n, freq="h"),
-        "x": rng.normal(0, 1, n),
-        "ent": [f"E{i % 100:03d}" for i in range(n)],
-        "y": rng.integers(0, 2, n),
-    })
+    return pd.DataFrame(
+        {
+            "date": pd.date_range("2024-01-01", periods=n, freq="h"),
+            "x": rng.normal(0, 1, n),
+            "ent": [f"E{i % 100:03d}" for i in range(n)],
+            "y": rng.integers(0, 2, n),
+        }
+    )
 
 
 def test_out_of_time_holdout_is_last_by_time():
@@ -39,10 +40,12 @@ def test_calib_disjoint_from_cv_folds():
 def test_random_split_stratified_holdout_rate():
     rng = np.random.default_rng(9)
     n = 4000
-    df = pd.DataFrame({
-        "x": rng.normal(0, 1, n),
-        "y": rng.integers(0, 2, n),
-    })
+    df = pd.DataFrame(
+        {
+            "x": rng.normal(0, 1, n),
+            "y": rng.integers(0, 2, n),
+        }
+    )
     plan = make_splits(df, "y", "binary", None, None)
     assert plan.kind == "random"
     rate_train = df.iloc[plan.train_idx]["y"].mean()

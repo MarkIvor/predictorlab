@@ -1,4 +1,4 @@
-﻿import secrets
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -38,8 +38,7 @@ def _public_model(slug: str, db: Session) -> tuple[Model, ModelVersion]:
 
 
 @router.post("/manage/{model_id}", status_code=201)
-def manage_public(model_id: int, body: PublicManageIn,
-                  user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
+def manage_public(model_id: int, body: PublicManageIn, user: User = Depends(require_role("admin", "builder")), db: Session = Depends(get_db)):
     m = db.get(Model, model_id)
     if m is None or (user.role != "admin" and m.user_id != user.id):
         raise HTTPException(status_code=404, detail="Модель не найдена")
@@ -56,6 +55,7 @@ def manage_public(model_id: int, body: PublicManageIn,
     if exists:
         raise HTTPException(status_code=409, detail="Такой slug уже занят")
     from app.services.security import hash_password
+
     m.slug = slug
     if body.password:
         m.public_password_hash = hash_password(body.password)
@@ -86,19 +86,16 @@ def public_predict(slug: str, body: PublicPredictIn, request: Request, db: Sessi
         raise HTTPException(status_code=429, detail="Слишком много запросов с этого адреса — подождите минуту")
     if m.public_password_hash:
         from app.services.security import verify_password
+
         if not body.password or not verify_password(body.password, m.public_password_hash):
             raise HTTPException(status_code=401, detail="Неверный пароль страницы")
     bundle = engine.load_bundle(v.id, v.dir_path)
     try:
-        results, warnings = engine.predict_records(
-            bundle, [body.data],
-            threshold=m.threshold if m.task_type == "binary" else None,
-            include_reasons=True)
+        results, warnings = engine.predict_records(bundle, [body.data], threshold=m.threshold if m.task_type == "binary" else None, include_reasons=True)
     except engine.ValidationError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from None
     res = results[0]
-    db.add(PredictionLog(prediction_id=res["prediction_id"], model_id=m.id, version_id=v.id,
-                         mode="public", input=body.data, output=res, latency_ms=0))
+    db.add(PredictionLog(prediction_id=res["prediction_id"], model_id=m.id, version_id=v.id, mode="public", input=body.data, output=res, latency_ms=0))
     db.commit()
     PREDICT_REQUESTS.labels(str(m.id), "public").inc()
     return {"prediction": res, "warnings": warnings[:3]}

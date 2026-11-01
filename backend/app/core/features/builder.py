@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 import duckdb
 import pandas as pd
@@ -6,17 +7,19 @@ import pandas as pd
 from app.config import get_settings
 from app.core.ingest.loader import ingest_dataframe
 from app.models.database import Connection, Dataset, Job, SessionLocal
+from app.services.ensure import require
 from app.services.security import decrypt_str
 
 WINDOWS = (7, 30, 90)
 
 
-def _q(ident) -> str:
+def _q(ident: object) -> str:
     return '"' + str(ident).replace('"', '""') + '"'
 
 
-def _emit(job_id, ev_type, data):
+def _emit(job_id: str, ev_type: str, data: dict) -> None:
     from app.models.database import JobEvent
+
     db = SessionLocal()
     try:
         db.add(JobEvent(job_id=job_id, type=ev_type, data=data))
@@ -25,7 +28,7 @@ def _emit(job_id, ev_type, data):
         db.close()
 
 
-def _progress(job_id, **fields):
+def _progress(job_id: str, **fields: object) -> None:
     db = SessionLocal()
     try:
         job = db.get(Job, job_id)
@@ -38,8 +41,9 @@ def _progress(job_id, **fields):
         db.close()
 
 
-def connection_connector(conn_row: Connection):
+def connection_connector(conn_row: Connection) -> Any:
     from app.services.connectors.registry import get_connector
+
     params = json.loads(decrypt_str(conn_row.params_enc))
     return get_connector(conn_row.name, conn_row.db_type, params)
 
@@ -59,8 +63,7 @@ def _snap_sql(config: dict, mode: str, snapshot_dates: list[str], entity_ids: li
     if mode == "rolling":
         values = ", ".join(f"(TIMESTAMP '{d}')" for d in snapshot_dates)
         exists_clause = f"WHERE TRY_CAST(e.{main_dt} AS TIMESTAMP) < s.t0" if main_dt else ""
-        return (f"SELECT e.{key} AS entity_id, s.t0 AS t0 FROM {main} AS e "
-                f"CROSS JOIN (VALUES {values}) AS s(t0) {exists_clause}")
+        return f"SELECT e.{key} AS entity_id, s.t0 AS t0 FROM {main} AS e CROSS JOIN (VALUES {values}) AS s(t0) {exists_clause}"
     t0_expr = f"TRY_CAST(e.{main_dt} AS TIMESTAMP)" if main_dt else "CURRENT_DATE"
     filt = ""
     if entity_ids:
@@ -69,8 +72,7 @@ def _snap_sql(config: dict, mode: str, snapshot_dates: list[str], entity_ids: li
     return f"SELECT e.{key} AS entity_id, {t0_expr} AS t0 FROM {main} AS e {filt}"
 
 
-def build_feature_sql(config: dict, snapshot_dates: list[str] | None = None,
-                      mode: str | None = None, entity_ids: list[str] | None = None) -> str:
+def build_feature_sql(config: dict, snapshot_dates: list[str] | None = None, mode: str | None = None, entity_ids: list[str] | None = None) -> str:
     """Point-in-time гарантия: каждый агрегат — только события < t0; таргет — окно [t0, t0 + horizon)."""
     mode = mode or config.get("snapshot_mode", "rolling")
     horizon = int(config.get("horizon_days", 45))
@@ -87,15 +89,16 @@ def build_feature_sql(config: dict, snapshot_dates: list[str] | None = None,
     for col in config.get("main_columns") or []:
         selects.append(f"e.{_q(col)}")
 
-    def add_agg_cte(alias: str, table: str, fk: str, dt_col: str, cols: list[tuple[str, str]],
-                    lower_bound: str | None):
+    def add_agg_cte(alias: str, table: str, fk: str, dt_col: str, cols: list[tuple[str, str]], lower_bound: str | None) -> None:
         dt_expr = f"TRY_CAST(c.{_q(dt_col)} AS TIMESTAMP)"
         where = f"{dt_expr} < snap.t0"
         if lower_bound:
             where += f" AND {dt_expr} >= {lower_bound}"
-        inner = (f"SELECT snap.entity_id, snap.t0, {', '.join(expr + ' AS ' + _q(name) for name, expr in cols)} "
-                 f"FROM snap JOIN {_q(table)} AS c ON CAST(c.{_q(fk)} AS VARCHAR) = CAST(snap.entity_id AS VARCHAR) "
-                 f"WHERE {where} GROUP BY snap.entity_id, snap.t0")
+        inner = (
+            f"SELECT snap.entity_id, snap.t0, {', '.join(expr + ' AS ' + _q(name) for name, expr in cols)} "
+            f"FROM snap JOIN {_q(table)} AS c ON CAST(c.{_q(fk)} AS VARCHAR) = CAST(snap.entity_id AS VARCHAR) "
+            f"WHERE {where} GROUP BY snap.entity_id, snap.t0"
+        )
         ctes.append((alias, inner))
         joins.append(f"LEFT JOIN {alias} ON {alias}.entity_id = snap.entity_id AND {alias}.t0 = snap.t0")
         for name, _ in cols:
@@ -125,8 +128,7 @@ def build_feature_sql(config: dict, snapshot_dates: list[str] | None = None,
         if child.get("rfm"):
             dt = child["datetime_col"]
             dt_expr = f"TRY_CAST(c.{_q(dt)} AS TIMESTAMP)"
-            rfm_cols = [(f"{table}__recency", f"DATE_DIFF('day', MAX({dt_expr}), snap.t0)"),
-                        (f"{table}__frequency", "COUNT(*)")]
+            rfm_cols = [(f"{table}__recency", f"DATE_DIFF('day', MAX({dt_expr}), snap.t0)"), (f"{table}__frequency", "COUNT(*)")]
             for spec in child.get("agg_columns") or []:
                 if spec.get("fn") == "sum" and spec.get("col"):
                     rfm_cols.append((f"{table}__monetary", f"SUM(TRY_CAST(c.{_q(spec['col'])} AS DOUBLE))"))
@@ -143,34 +145,38 @@ def build_feature_sql(config: dict, snapshot_dates: list[str] | None = None,
         else:
             target_col = "target_sum"
             expr = f"SUM(TRY_CAST(c.{_q(target.get('column', 'amount'))} AS DOUBLE))"
-        inner = (f"SELECT snap.entity_id, snap.t0, {expr} AS {_q(target_col)} "
-                 f"FROM snap JOIN {_q(target['table'])} AS c "
-                 f"ON CAST(c.{_q(target.get('fk') or 'customer_id')} AS VARCHAR) = CAST(snap.entity_id AS VARCHAR) "
-                 f"WHERE {dt_expr} >= snap.t0 AND {dt_expr} < snap.t0 + INTERVAL {horizon} DAY "
-                 f"GROUP BY snap.entity_id, snap.t0")
+        inner = (
+            f"SELECT snap.entity_id, snap.t0, {expr} AS {_q(target_col)} "
+            f"FROM snap JOIN {_q(target['table'])} AS c "
+            f"ON CAST(c.{_q(target.get('fk') or 'customer_id')} AS VARCHAR) = CAST(snap.entity_id AS VARCHAR) "
+            f"WHERE {dt_expr} >= snap.t0 AND {dt_expr} < snap.t0 + INTERVAL {horizon} DAY "
+            f"GROUP BY snap.entity_id, snap.t0"
+        )
         ctes.append(("a_target", inner))
         joins.append("LEFT JOIN a_target ON a_target.entity_id = snap.entity_id AND a_target.t0 = snap.t0")
         selects.append(f"a_target.{_q(target_col)} AS {_q(target_col)}")
 
     cte_sql = ",\n".join(f"{alias} AS (\n  {inner}\n)" for alias, inner in ctes)
     sql = (
-        "WITH " + cte_sql + "\n"
-        + "SELECT " + ", ".join(selects) + "\n"
+        "WITH "
+        + cte_sql
+        + "\n"
+        + "SELECT "
+        + ", ".join(selects)
+        + "\n"
         + f"FROM snap JOIN {main} AS e ON CAST(e.{key} AS VARCHAR) = CAST(snap.entity_id AS VARCHAR)\n"
         + ("\n".join(joins) if joins else "")
     )
     return sql
 
 
-def _snapshots_for_training(duck, config: dict) -> list[str]:
+def _snapshots_for_training(duck: Any, config: dict) -> list[str]:
     target = config.get("target") or {}
     if not target.get("table"):
         return []
     horizon = int(config.get("horizon_days", 45))
     t, dt = target["table"], target["datetime_col"]
-    row = duck.execute(
-        f'SELECT MIN(TRY_CAST({_q(dt)} AS TIMESTAMP)), MAX(TRY_CAST({_q(dt)} AS TIMESTAMP)), COUNT(*) FROM {_q(t)}'
-    ).fetchone()
+    row = duck.execute(f"SELECT MIN(TRY_CAST({_q(dt)} AS TIMESTAMP)), MAX(TRY_CAST({_q(dt)} AS TIMESTAMP)), COUNT(*) FROM {_q(t)}").fetchone()
     lo, hi, total = row
     if lo is None or hi is None:
         return []
@@ -195,7 +201,7 @@ def _snapshots_for_training(duck, config: dict) -> list[str]:
     return valid
 
 
-def _fetch_tables(duck, conn, config, settings):
+def _fetch_tables(duck: Any, conn: Any, config: dict, settings: Any) -> dict:
     tables = [config["main_table"]] + [c["table"] for c in config.get("children", [])]
     if (config.get("target") or {}).get("table"):
         tables.append(config["target"]["table"])
@@ -208,10 +214,10 @@ def _fetch_tables(duck, conn, config, settings):
     return fetched
 
 
-def run(job_id: str):
+def run(job_id: str) -> dict:
     settings = get_settings()
     db = SessionLocal()
-    job = db.get(Job, job_id)
+    job = require(db.get(Job, job_id), f"Задача {job_id} не найдена")
     payload = dict(job.payload or {})
     config = payload["config"]
     user_id = job.user_id
@@ -219,7 +225,7 @@ def run(job_id: str):
     db.close()
 
     db = SessionLocal()
-    conn_row = db.get(Connection, int(config["connection_id"]))
+    conn_row = require(db.get(Connection, int(config["connection_id"])), "Подключение не найдено")
     db.close()
 
     duck = duckdb.connect()
@@ -254,8 +260,7 @@ def run(job_id: str):
     out_dir = settings.datasets_path / dataset_id
     for table in fetched:
         try:
-            duck.execute(
-                f"COPY (SELECT * FROM {_q(table)}) TO '{(out_dir / ('src_' + table + '.parquet')).as_posix()}' (FORMAT PARQUET)")
+            duck.execute(f"COPY (SELECT * FROM {_q(table)}) TO '{(out_dir / ('src_' + table + '.parquet')).as_posix()}' (FORMAT PARQUET)")
         except Exception:
             pass
 
@@ -298,7 +303,7 @@ def features_for_entities(dataset: Dataset, entity_ids: list[str]) -> pd.DataFra
     settings = get_settings()
     config = dataset.feature_config or {}
     db = SessionLocal()
-    conn_row = db.get(Connection, int(config.get("connection_id")))
+    conn_row = require(db.get(Connection, int(config.get("connection_id") or 0)), "Подключение не найдено")
     db.close()
     duck = duckdb.connect()
     conn = connection_connector(conn_row)

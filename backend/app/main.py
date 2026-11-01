@@ -3,7 +3,6 @@ import contextlib
 import json
 import logging
 import time
-from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -53,6 +52,7 @@ async def lifespan(app: FastAPI):
     queue.set_main_loop(asyncio.get_running_loop())
     logger.info("predictorlab started, storage=%s", get_settings().storage_path)
     from app.api.monitor import schedule_loop, ttl_cleanup_loop
+
     cleanup_task = asyncio.create_task(ttl_cleanup_loop())
     schedule_task = asyncio.create_task(schedule_loop())
     yield
