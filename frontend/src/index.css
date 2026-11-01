@@ -1,0 +1,30 @@
+body {
+  background-image:
+    linear-gradient(var(--gap), transparent 0),
+    linear-gradient(90deg, transparent 0);
+  background: var(--bg);
+}
+
+.page {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: var(--gap);
+}
+
+.page-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: var(--gap) 2px;
+}
+
+.brand {
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.brand .accent { color: var(--accent); }
+
+.muted { color: var(--muted); }

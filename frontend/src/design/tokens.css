@@ -1,0 +1,101 @@
+:root {
+  --bg:        #101015;
+  --surface:   #1E1E23;
+  --surface-2: #27272D;
+  --line:      #34343B;
+  --accent:    #506385;
+  --ink:       #F1F0E1;
+  --stone:     #B4B3A7;
+  --muted:     #8C8B82;
+  --ok:     #7E9A86;
+  --warn:   #C2A45E;
+  --danger: #B5605A;
+  --radius: 2px;
+  --gap: 8px;
+  --font: "Proto Mono", "Share Tech Mono", "JetBrains Mono", Consolas, monospace;
+}
+
+@font-face {
+  font-family: "Share Tech Mono";
+  src: url("/fonts/ShareTechMono-Regular.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+#root { min-height: 100vh; }
+
+h1, h2, h3 { margin: 0; font-weight: normal; }
+
+a { color: var(--ink); text-decoration: none; }
+a:hover { color: var(--stone); }
+
+button { font-family: var(--font); }
+
+input, select, textarea {
+  font-family: var(--font);
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--surface-2); }
+::-webkit-scrollbar-track { background: var(--bg); }
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--gap);
+}
+
+.tile {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 16px;
+  position: relative;
+  min-width: 0;
+}
+
+.tile-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.hero-digit {
+  font-size: 64px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+@media (max-width: 1279px) { .bento-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 767px)  { .bento-grid { grid-template-columns: 1fr; } .tile { padding: 14px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

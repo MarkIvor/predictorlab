@@ -1,0 +1,38 @@
+dominant_feature_warn: 0.5
+dominant_feature_block: 0.7
+
+suspicious_auc: 0.97
+suspicious_r2: 0.98
+
+single_feature_auc_block: 0.95
+single_feature_corr_block: 0.95
+
+id_uniqueness: 0.95
+constant_share: 0.99
+
+missing_share_diff_warn: 0.2
+missing_indicator_warn: 0.8
+missing_indicator_block: 0.9
+
+future_feature_share: 0.5
+
+suspicious_names:
+  - status
+  - closed
+  - cancel
+  - end_date
+  - result
+  - outcome
+  - churn
+  - refund
+  - статус
+  - закрыт
+  - расторжени
+  - отмен
+  - дата_окончани
+  - дата_расторжени
+  - результат
+  - исход
+
+min_rows: 100
+min_class_count: 20
