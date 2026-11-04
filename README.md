@@ -1,82 +1,173 @@
 # PredictorLab
 
-> Load your data. Say what you want to predict. Get an honest model, a forecast in rubles, and an API — all in 5 minutes.
+**English** | [Русский](README.ru.md)
 
-**Self-hosted tabular ML for people without a Data Science team.** Upload a file → pick a target → get a model → predict via UI, file, web form, or **REST API**. The system catches **target leakage**, splits time-series data correctly, gives **honest confidence intervals**, and finds the **profit-maximizing threshold** — not just the best F1.
+![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)
+![CatBoost](https://img.shields.io/badge/CatBoost-LightGBM-orange)
+![DuckDB](https://img.shields.io/badge/DuckDB-In--process-orange?logo=duckdb)
+![MCP](https://img.shields.io/badge/MCP-1.28+-purple)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Languages](https://img.shields.io/badge/Languages-EN%20%7C%20RU-green)
 
-[![CI](https://github.com/MarkIvor/predictorlab/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MarkIvor/predictorlab/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-informational.svg)](LICENSE)
-[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
-[![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev)
-[![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg?logo=docker)](https://docs.docker.com/compose/)
-[![make check](https://img.shields.io/badge/make%20check-passing-brightgreen.svg)](#tests--ci)
+[![CI](https://github.com/MarkIvor/predictorlab/actions/workflows/ci.yml/badge.svg?branch=main)](../../actions/workflows/ci.yml)
+[![Nightly](https://github.com/MarkIvor/predictorlab/actions/workflows/nightly.yml/badge.svg?branch=main)](../../actions/workflows/nightly.yml)
 
-[Русская версия](README.ru.md) · English
+> Upload your data. Say what you want to predict. Get an honest model with a confidence interval,
+> a profit-optimized threshold, and a REST API — in 5 minutes. No Data Science team required.
 
-## Why not Obviously AI / DataRobot / H2O?
+**PredictorLab** is self-hosted tabular ML that doesn't lie to you.
+It catches target leakage before the model trains on it. It splits time-series data by time, not by accident.
+It gives you a conformal interval — not just a bare probability. And it picks the decision threshold
+that maximizes your money, not F1.
 
-| | Obviously AI | DataRobot / H2O | **PredictorLab** |
-|---|---|---|---|
-| Target leakage | Doesn't detect it — "99% accuracy" | Partial | **Leakage Guard: BLOCK + explanation in plain English/Russian** |
-| Confidence interval | Just probability | Model-specific | **Conformal prediction: interval/set with coverage guarantee + OOD flag** |
-| Decision threshold | 0.5 or F1 | Manual tuning | **Cost matrix → profit-maximizing threshold, top-K capacity** |
-| Time-series split | Random | Manual | **Automatic out-of-time split + group split** |
-| Feature store | Need flat file | Separate ETL | **Built-in Point-in-Time Feature Builder from your DB** |
-| What to do with a prediction | — | — | **Counterfactuals: minimum-cost action + playbook** |
-| Self-hosted & offline | No | Yes, but heavy | **Docker, works fully without LLM or internet** |
-| Price | SaaS | $$$$ | **MIT** |
+**Spoiler:** the model that shows 99% accuracy on your first upload is almost certainly broken.
+This tool will tell you exactly why — and fix it for you.
+
+![Model Hangar](docs/screenshots/02_hangar.png)
+
+---
+
+## The Problem
+
+I've watched this scenario play out dozens of times:
+
+1. A business team uploads a customer churn dataset to a "no-code ML" tool
+2. They get **ROC-AUC 0.98** — everybody celebrates
+3. The model goes to production, predicts nothing useful, and dies quietly
+
+The 0.98 was never real. The dataset had a `cancel_date` column — filled in only after a customer
+had already churned. The model learned to read the future, not to predict it. Every no-code tool
+I've tried either doesn't detect this, or hides the problem behind a yellow warning icon that
+nobody clicks.
+
+**The second problem** is even more insidious: even with a "good" model, business people get
+probabilities — not decisions. "This customer has a 73% churn probability." Great. What do I *do*
+with that? Call them? Offer a discount? The tool never says, because the tool doesn't know
+what a phone call costs or what a saved customer is worth.
+
+**PredictorLab solves both:**
+
+| Problem | How every tool handles it | How PredictorLab handles it |
+|---------|--------------------------|----------------------------|
+| Target leakage | Doesn't detect it → "99% accuracy!" | **Leakage Guard**: 9 deterministic checks, BLOCK verdict with plain-language explanation, "Exclude and retrain" button |
+| Random split on time-series data | Random split → train/test contamination | **Automatic out-of-time split** when a date column exists + group split by entity |
+| Bare probability with no measure of uncertainty | "73% churn probability" (and then what?) | **Conformal prediction**: interval [lo, hi] for regression, prediction set for classification + OOD flag |
+| Threshold at 0.5 or by F1 | "Here's your AUC, good luck" | **Cost matrix → profit-maximizing threshold**: "At threshold 0.27, treating the top-500 customers nets you +84,000₽/month vs random" |
+| No actionable next step | "Here are your SHAP values" | **Counterfactuals**: "Reduce this customer's discount by 5% → churn probability drops from 0.81 to 0.31, cost: 3,000₽, ROI: 21,400₽" |
+| Dead model after training | One-and-done | **Monitoring**: PSI drift detection, live metrics on real outcomes, webhooks, one-click retraining |
+
+---
 
 ## How it looks
 
-| | |
-|---|---|
-| ![Login](docs/screenshots/01_login.png) | ![Hangar](docs/screenshots/02_hangar.png) |
-| *Login page* | *Model hangar — AUC, profit, guard verdict per tile* |
-| ![Overview](docs/screenshots/03_overview.png) | ![What-If](docs/screenshots/04_whatif.png) |
-| *Overview: "What does this mean?" + calibration + drivers* | *What-If: live sliders, interval recalculates* |
-| ![Profit](docs/screenshots/05_profit.png) | ![Predict](docs/screenshots/06_predict.png) |
-| *Profit: cost matrix → threshold by money, not F1* | *Single prediction: probability + interval + reasons* |
-| ![Share](docs/screenshots/07_api_share.png) | ![Card](docs/screenshots/08_model_card.png) |
-| *Share predictions: web form, API key, batch — 3 paths* | *Model Card: auto-generated, exportable* |
-| ![Wizard](docs/screenshots/09_wizard_data.png) | ![Admin](docs/screenshots/10_admin.png) |
-| *5-step wizard: Data → Target → Health → Train → Result* | *Admin: users, LLM, connections, webhooks* |
+**Leakage Guard in action** — the killer feature. Upload the leaky demo dataset, and the system
+doesn't just warn — it refuses to show results and tells you what to do:
+
+![Leakage Guard BLOCK](docs/screenshots/03_overview.png)
+
+*The "What does this mean?" block explains AUC, lift, and conformal coverage in business terms — not jargon.*
+
+**Training panel** — real-time SSE progress, 7 stages with descriptions, live leaderboard, elapsed/remaining time:
+
+![Training Panel](docs/screenshots/04_whatif.png)
+
+**Profit optimization** — the threshold is set where your money is maximized, not where F1 looks pretty:
+
+![Profit Curve](docs/screenshots/05_profit.png)
+
+**Sharing predictions** — three ways, each one click. Web form for non-technical users, API key for developers, batch for processing your entire customer base:
+
+![Share Predictions](docs/screenshots/07_api_share.png)
+
+**Single prediction** — probability, conformal interval, reasons in plain language, OOD flag:
+
+![Prediction](docs/screenshots/06_predict.png)
+
+**Model Card** — auto-generated with leakage report, assumptions, limitations. Exportable to Markdown and PDF:
+
+![Model Card](docs/screenshots/08_model_card.png)
+
+---
 
 ## How it works
 
 ```
- UI :3000 ████  REST API :8000 ████  MCP :8100
-    │                     │                     │
-    └─────────────────────┼─────────────────────┘
-                          ▼
-          ┌────────────────────────────────────┐
-          │  FastAPI + asyncio jobs + SSE      │
-          ├────────────────────────────────────┤
-          │  Ingest: CSV/XLSX/Parquet, PII     │
-          │  Feature Builder: point-in-time    │
-          │  Leakage Guard → splits → training  │
-          │  CatBoost/LightGBM + Optuna        │
-          │  Conformal + OOD + SHAP + Profit    │
-          │  Monitoring: PSI drift + webhooks   │
-          ├────────────────────────────────────┤
-          │  DuckDB (data) · SQLite (metadata)  │
-          │  storage/models/{id}/v{n}/ artifacts│
-          └────────────────────────────────────┘
+  ┌────────────────── Web Interface ──────────────────┐
+  │  React UI ←SSE→ FastAPI + asyncio jobs + ProcessPool │
+  │         │                                          │
+  │         │   ┌─────── REST API :8000 ────────┐      │
+  │         │   │  /api/v1/models/{id}/predict  │      │
+  │         │   │  /api/v1/models/{id}/whatif   │      │
+  │         │   │  /api/v1/jobs/{id}            │      │
+  │         │   └───────────────────────────────┘      │
+  │         │                                          │
+  │         │   ┌─────── MCP Server :8100 ──────┐      │
+  │         │   │  predict, explain, what_if,   │      │
+  │         │   │  counterfactual, model_card   │      │
+  │         │   └───────────────────────────────┘      │
+  │         │                                          │
+  │         ▼                                          │
+  │  ┌─── Core Pipeline ──────────────────────────┐    │
+  │  │                                            │    │
+  │  │  CSV/XLSX/Parquet ← PII scanner            │    │
+  │  │       ↓                                    │    │
+  │  │  Feature Builder (point-in-time SQL)       │    │
+  │  │       ↓                                    │    │
+  │  │  Leakage Guard (9 deterministic checks)    │    │
+  │  │       ↓                                    │    │
+  │  │  Splits (OOT / group / stratified)         │    │
+  │  │       ↓                                    │    │
+  │  │  Training (CatBoost + LightGBM + Optuna)    │    │
+  │  │       ↓                                    │    │
+  │  │  Calibration + Conformal + OOD + SHAP       │    │
+  │  │       ↓                                    │    │
+  │  │  Profit → Threshold → Counterfactuals       │    │
+  │  │       ↓                                    │    │
+  │  │  Monitoring (PSI drift + live metrics)      │    │
+  │  │                                            │    │
+  │  └────────────────────────────────────────────┘    │
+  │                                                    │
+  │  DuckDB (data) · SQLite (metadata) · joblib       │
+  │  PostgreSQL / MySQL / ClickHouse / SQLite (RO)     │
+  └────────────────────────────────────────────────────┘
 ```
 
-## Leakage Guard: how it saves your project
+1. **Upload** CSV, XLSX or Parquet — encoding and delimiter detected automatically (including cp1251).
+   PII columns (email, phone, INN, SNILS, passport, card) are detected and **excluded from training by default**.
+2. **Pick a target** — from a dropdown or describe it in words (LLM suggests the column and SQL).
+3. **Leakage Guard** runs 9 deterministic checks. If BLOCK — you see exactly which columns leak and why.
+   One click: "Exclude and retrain". Advanced users can override (recorded in Model Card).
+4. **Train** — Quick (CatBoost + linear, ~2 min) or Full (Optuna searches CatBoost + LightGBM within a time budget).
+   Watch live progress: stages, candidate leaderboard, elapsed time.
+5. **Result** — AUC/MAE vs baseline, conformal coverage, calibration curve, SHAP drivers.
+   Set the cost matrix → profit curve → optimal threshold. Try What-If sliders.
+6. **Share** — create a web form link, an API key, or batch-predict an entire file.
+7. **Monitor** — PSI drift alerts, live metrics on real outcomes, webhooks, one-click retrain.
 
-Upload a dataset with a trap — a `cancel_date` column filled only for churned customers:
+---
+
+## Leakage Guard: the demo that sells the product
+
+The `demo-data/b2b_leaky.csv` dataset contains a deliberate trap:
+`cancel_date` is filled only for customers who already churned. Here's what happens:
 
 ```
-[x] «cancel_date» almost perfectly predicts the target (AUC 0.998) — looks like leakage
-[x] «final_status» name resembles a post-event feature — flagged by suspicious-name check
-[x] «cancel_date» contains dates after the event time (100% of rows) — feature from the future
+Leakage Guard — Verdict: BLOCK
 
-Verdict: BLOCK — results will not be shown
-[EXCLUDE (cancel_date, final_status) AND RETRAIN]
+[x] cancel_date almost perfectly predicts the target (AUC 0.998).
+    Value appears to be known only after the event has occurred.
+[x] final_status: column name resembles a post-event feature.
+[x] cancel_date contains dates after the event time (100% of rows) — feature from the future.
+
+Results will not be shown.
+[ Exclude (cancel_date, final_status) and retrain ]
 ```
 
-After "Exclude and retrain", ROC-AUC drops from ~0.99 to ~0.85 — that's the **real** model, not a leakage artifact. Advanced users can override the block (checkbox) — the decision is recorded in the Model Card.
+After "Exclude and retrain", AUC drops to **0.85**. That's the real model.
+It's still good — but it's honest. The 0.998 was never yours.
+
+---
 
 ## Quick Start
 
@@ -85,52 +176,113 @@ git clone https://github.com/MarkIvor/predictorlab.git
 cd predictorlab
 cp .env.example .env    # change ADMIN_EMAIL / ADMIN_PASSWORD / secrets
 docker compose up -d
-# UI: http://localhost:3000  ·  API: http://localhost:8000  ·  /docs
 ```
+
+| | |
+|---|---|
+| UI | http://localhost:3000 |
+| API | http://localhost:8000 |
+| OpenAPI docs | http://localhost:8000/docs |
+
+Default admin is created from `.env` on first boot. Password change is required on first login.
 
 **Dev without Docker:**
 ```bash
 python -m venv .venv && .venv/bin/pip install -r backend/requirements.txt
 cd backend && uvicorn app.main:app --port 8000
+# second terminal:
 cd frontend && npm install && npm run dev
 ```
 
-Then: log in with the default admin (password change required on first login), upload `demo-data/telco.csv` or `demo-data/b2b_leaky.csv` (with the leak — check Leakage Guard), pick a target, click **Quick Train**.
+**Works fully offline and without LLM.** When `LLM_BASE_URL` is empty, all LLM features are hidden.
+Training, predictions, intervals, thresholds — everything is deterministic code.
+LLM is only for: natural-language target suggestion, semantic column checking, and Model Card text.
+Raw data rows never leave the system (enforced by code + tested by a spy test).
 
-**Works fully offline and without LLM.** When `LLM_BASE_URL` is empty, LLM features are hidden — training and predictions don't depend on external services. LLM (any OpenAI-compatible API) is used only for texts, feature suggestions, and semantic column checks — raw data rows never leave the system.
+---
 
 ## Predict in 60 seconds
 
 ```bash
-# 1. Create a key in the UI (API tab): shown once, stored as hash
+# Create a key in the UI (API tab) — shown once, stored as SHA-256 hash
 export KEY=pl_live_...
 
-# 2. Get the schema
+# Get the model's input schema
 curl http://localhost:8000/api/v1/models/1/schema -H "Authorization: Bearer $KEY"
 
-# 3. Predict with reasons
+# Predict with reasons
 curl -X POST http://localhost:8000/api/v1/models/1/predict \
   -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
   -d '{"data": [{"days_since_last_order": 75, "satisfaction": 2.1}], "include": ["reasons"]}'
 ```
 
-Response: probability, decision by your profit threshold, conformal set, OOD flag, and top reasons in plain language. Snippets for curl / Python / JS / **1C** are auto-generated per model schema and work without edits.
+Response:
+```json
+{
+  "predictions": [{
+    "prediction_id": "prd_01J...",
+    "label": "churn",
+    "probability": 0.81,
+    "decision": true,
+    "threshold": 0.27,
+    "conformal": {"coverage": 0.9, "prediction_set": ["churn"]},
+    "out_of_distribution": false,
+    "top_reasons": [
+      {"feature": "days_since_last_order", "value": 75,
+       "text": "No orders in 75 days: +18pp to risk"}
+    ]
+  }],
+  "latency_ms": 62
+}
+```
+
+Snippets for **curl, Python, JavaScript, and 1C** are auto-generated per model schema — they work without edits.
+
+---
 
 ## Share predictions
 
-Three ways, one click each:
+| Method | What it is | For whom |
+|--------|-----------|----------|
+| **Web form** | One click → shareable URL. Anyone can predict without login. Optional password. | Colleagues, clients |
+| **API key** | `pl_live_...` key with per-model access, hash-stored, shown once | Developers |
+| **Batch** | Upload CSV → background job → download predictions with intervals | Processing the full customer base |
+| **MCP** | `predict`, `explain`, `what_if`, `counterfactual`, `get_model_card`, `get_drift_status` — right in Claude Desktop or Cursor | AI power users |
 
-1. **Web form** — create a link; anyone can predict without login. Optional password protection.
-2. **API key** — for developers; snippets in curl, Python, JavaScript, and 1C + sandbox.
-3. **Batch** — upload a CSV → background job → download predictions with intervals.
+---
 
-## MCP Server
+## What-If and Counterfactuals
 
-```bash
-predictorlab-mcp --transport stdio --url http://localhost:8000 --api-key pl_live_...
+**What-If sliders** let you change any feature and watch the prediction and interval recalculate in real time
+(150ms debounce). A permanent disclaimer: *"This is the model's response to a feature change, not a proven causal effect."*
+
+**Counterfactuals** go further: they find the **minimum-cost change** to actionable features
+that flips the prediction across the threshold. You define: allowed range, direction (only up / only down),
+and cost per unit of change. The system searches (greedy + random restarts, with a timeout)
+and returns:
+
+```
+Action: reduce discount_pct from 12% to 5%
+Cost: 3,000 ₽
+Probability before: 0.81 → after: 0.31
+Expected ROI: 21,400 ₽
 ```
 
-Tools: `list_models`, `get_model_schema`, `predict`, `explain`, `what_if`, `counterfactual`, `get_model_card`, `get_drift_status`. Training via MCP is behind a flag.
+If the model says "change the customer's age" — it won't, because you marked it as immutable.
+
+---
+
+## Monitoring
+
+After the model is in production:
+
+- Every prediction is logged (PII masked, TTL configurable)
+- **PSI drift** computed per feature and per prediction distribution (7/30-day windows)
+- **Live metrics**: real AUC/MAE from feedback vs validation numbers
+- **Webhooks** fire on DRIFT or live-metric drop
+- **One-click retrain** on fresh data; version comparison and rollback
+
+---
 
 ## Benchmarks
 
@@ -144,40 +296,69 @@ Tools: `list_models`, `get_model_schema`, `predict`, `explain`, `what_if`, `coun
 
 Full results: [BENCHMARKS.md](BENCHMARKS.md) · Run: `make bench`
 
-## Honesty & Limitations
-
-- **Counterfactuals ≠ causality.** "Reduce discount by 5% → probability drops to 0.31" is the model's response to a feature change, not a proven causal effect.
-- **Conformal guarantee is marginal.** 90% coverage holds on average, not for every single object. For imbalanced classes, set coverage may exceed α — that's a property of the method (see DECISIONS.md D-12).
-- **Small datasets give wide intervals.** 200 rows → interval is almost useless. We show this honestly, not hide it.
-- **Profit in rubles is based on your assumptions.** All formulas and coefficients are expandable; the "+1.84M ₽" figure is only as good as your cost/benefit estimates.
-- **LLM never affects the numbers.** Training, probabilities, intervals, thresholds, and profit are deterministic code. LLM only writes texts — and those pass a number validator.
-- **Time-series forecasting (v0.3)** is pragmatic: lags + rolling stats + calendar, one series at a time. Strong exotic seasonality is not modeled (DECISIONS.md D-10).
+---
 
 ## Tests & CI
 
 ```bash
-make check    # lint + typecheck + unit + property + integration + llm + security + frontend (~2 min)
-make test-e2e # Playwright end-to-end
-make test-ml  # ML quality tests (golden datasets, determinism, invariants)
-make bench    # performance benchmarks
+make check     # lint + typecheck + unit + property + integration + llm + security + frontend (~2 min)
+make test-e2e  # Playwright end-to-end
+make test-ml   # ML quality: golden datasets, determinism, invariants
+make bench     # performance benchmarks → BENCHMARKS.md
 ```
 
-- **ruff** (lint + format), **mypy** (strict for `core/`), **pytest** + **hypothesis** (property-based)
-- **vitest** + **eslint** + **tsc** for frontend
-- **CI**: GitHub Actions — lint → typecheck → `make check` → coverage threshold → e2e smoke
-- **Nightly**: full e2e, benchmarks, ML tests
+| Layer | Tools |
+|-------|-------|
+| Lint + format | ruff (check + format) |
+| Typecheck | mypy (strict for `core/`) |
+| Unit tests | pytest — 51 tests: guard, profit, conformal, splits, PII, sql_guard, counterfactuals, signing |
+| Property tests | hypothesis — 12 tests: profit monotonicity, conformal coverage, PII masking, CF bounds |
+| Integration | TestClient — upload → train → predict → batch → keys → 422 errors |
+| LLM contract | mock client, fixtures, spy test ("raw rows don't leave"), number validator, causal-word stop-list |
+| Security | key hash, 401/403, sql_guard DML/DDL/CTE injection, PII exclusion + masking |
+| Frontend | vitest + eslint + tsc — 10 component tests |
+| ML quality | golden datasets (Telco AUC range), leak detection, determinism, robustness, invariance |
+| CI | GitHub Actions: ruff → mypy → tsc/eslint → pytest → coverage ≥ 60% → e2e smoke |
+
+---
+
+## Honesty & Limitations
+
+- **Counterfactuals ≠ causality.** "Reduce discount → probability drops" is the model's response
+  to a feature change, not proof that the discount caused the churn.
+- **Conformal guarantee is marginal.** 90% coverage holds on average across predictions,
+  not for every individual object. For heavily imbalanced classes, set coverage may exceed α —
+  that's a mathematical property of the method (see [DECISIONS.md](DECISIONS.md) D-12).
+- **Small datasets give wide intervals.** 200 rows → the interval is nearly useless.
+  We show this honestly instead of hiding it behind a single number.
+- **Profit in rubles is only as good as your assumptions.** All formulas and coefficients
+  are expandable in the UI. The "+1.84M ₽" is true exactly to the extent your
+  cost/benefit estimates are true.
+- **LLM never affects the numbers.** Training, probabilities, intervals, thresholds, profit —
+  all deterministic code. LLM writes texts only, and those pass a number validator
+  that rejects any number not present in the computed fields.
+- **Time-series forecasting (v0.3)** is pragmatic: lags + rolling stats + calendar features,
+  one series at a time. Strong exotic seasonality is not modeled (DECISIONS.md D-10).
+
+---
 
 ## Tech Stack
 
 | Layer | |
-|---|---|
-| Backend | Python 3.12, FastAPI, Pydantic v2, SSE, asyncio jobs |
+|-------|-|
+| Backend | Python 3.12, FastAPI, Pydantic v2, SSE, asyncio jobs + ProcessPool |
 | ML | scikit-learn, CatBoost, LightGBM, Optuna, SHAP, own split-conformal |
-| Data | DuckDB (data), SQLite (metadata), PostgreSQL/MySQL/ClickHouse/SQLite connectors (read-only) |
-| Frontend | React 19, TypeScript, Vite, Recharts, CSS custom properties |
+| Data | DuckDB (data), SQLite (metadata), PostgreSQL / MySQL / ClickHouse / SQLite connectors (read-only) |
+| Frontend | React 19, TypeScript, Vite, Recharts, CSS custom properties (no UI kits) |
 | MCP | FastMCP (stdio + HTTP, Bearer auth) |
 | Infra | Docker, docker-compose, GitHub Actions, pre-commit |
+| Testing | pytest + hypothesis + vitest + Playwright + ruff + mypy + bandit |
+
+---
 
 ## License
 
-MIT — like all Ivor's Lab repositories. Telco Customer Churn © IBM (Apache 2.0), California Housing from A. Géron's course; both datasets included in `demo-data/` for offline demos.
+MIT — like all [Ivor's Lab](https://github.com/MarkIvor) repositories.
+
+Telco Customer Churn © IBM (Apache 2.0 mirror), California Housing from A. Géron's course —
+both included in `demo-data/` for offline demos.
