@@ -14,12 +14,11 @@
 [![Nightly](https://github.com/MarkIvor/predictorlab/actions/workflows/nightly.yml/badge.svg?branch=main)](../../actions/workflows/nightly.yml)
 
 > Upload your data. Say what you want to predict. Get an honest model with a confidence interval,
-> a profit-optimized threshold, and a REST API — in 5 minutes. No Data Science team required.
+> a profit-optimized threshold, and a REST API — in 5 minutes.
 
-**PredictorLab** is self-hosted tabular ML that doesn't lie to you.
-It catches target leakage before the model trains on it. It splits time-series data by time, not by accident.
-It gives you a conformal interval — not just a bare probability. And it picks the decision threshold
-that maximizes your money, not F1.
+**PredictorLab** is self-hosted tabular ML for **analysts who need ML but don't have a DS team**.
+You know your data, you know your business costs — PredictorLab handles the ML: catches leakage,
+splits correctly, calibrates probabilities, and converts them into decisions in rubles.
 
 **Spoiler:** the model that shows 99% accuracy on your first upload is almost certainly broken.
 This tool will tell you exactly why — and fix it for you.
@@ -28,34 +27,51 @@ This tool will tell you exactly why — and fix it for you.
 
 ---
 
+## Who this is for
+
+| You are | You have | PredictorLab gives you |
+|---------|----------|----------------------|
+| **Analyst / product manager** | A CSV with historical outcomes, business intuition about costs | A working ML model without learning scikit-learn. The tool asks the right questions (What's a false negative worth? Which features can you actually change?) and turns answers into a decision system |
+| **Consultant / data engineer** | Clients with data, no time to hand-hold | A self-hosted tool you can deploy for a client in 5 minutes, share a prediction form, and hand over an API. No SaaS dependency, no data leaving the client's server |
+| **Solo DS practitioner** | ML knowledge, but no time to build the full pipeline | The boring parts are done: out-of-time splits, conformal intervals, calibration, monitoring, versioning. You focus on features and business logic |
+
+**What you need:** a dataset with a labeled outcome column, and rough numbers for what a correct
+prediction earns vs what a wrong one costs. That's it.
+
+**What you don't need:** Python, scikit-learn, or a DS degree. But if you have them — the REST API
+and MCP server give you full programmatic control.
+
+---
+
 ## The Problem
 
 I've watched this scenario play out dozens of times:
 
-1. A business team uploads a customer churn dataset to a "no-code ML" tool
+1. A business team uploads a customer churn dataset to a mass-market "no-code ML" tool
 2. They get **ROC-AUC 0.98** — everybody celebrates
 3. The model goes to production, predicts nothing useful, and dies quietly
 
 The 0.98 was never real. The dataset had a `cancel_date` column — filled in only after a customer
-had already churned. The model learned to read the future, not to predict it. Every no-code tool
-I've tried either doesn't detect this, or hides the problem behind a yellow warning icon that
-nobody clicks.
+had already churned. The model learned to read the future, not to predict it. Mass-market no-code
+tools don't block on this — at best they show a yellow warning that nobody clicks.
+Enterprise tools like DataRobot *do* detect leakage, but they cost $$$ and require an implementation team.
 
 **The second problem** is even more insidious: even with a "good" model, business people get
 probabilities — not decisions. "This customer has a 73% churn probability." Great. What do I *do*
 with that? Call them? Offer a discount? The tool never says, because the tool doesn't know
 what a phone call costs or what a saved customer is worth.
 
-**PredictorLab solves both:**
+**PredictorLab solves both — in the gap between "too simple to trust" and "too expensive to buy":**
 
-| Problem | How every tool handles it | How PredictorLab handles it |
-|---------|--------------------------|----------------------------|
-| Target leakage | Doesn't detect it → "99% accuracy!" | **Leakage Guard**: 9 deterministic checks, BLOCK verdict with plain-language explanation, "Exclude and retrain" button |
-| Random split on time-series data | Random split → train/test contamination | **Automatic out-of-time split** when a date column exists + group split by entity |
-| Bare probability with no measure of uncertainty | "73% churn probability" (and then what?) | **Conformal prediction**: interval [lo, hi] for regression, prediction set for classification + OOD flag |
-| Threshold at 0.5 or by F1 | "Here's your AUC, good luck" | **Cost matrix → profit-maximizing threshold**: "At threshold 0.27, treating the top-500 customers nets you +84,000₽/month vs random" |
-| No actionable next step | "Here are your SHAP values" | **Counterfactuals**: "Reduce this customer's discount by 5% → churn probability drops from 0.81 to 0.31, cost: 3,000₽, ROI: 21,400₽" |
-| Dead model after training | One-and-done | **Monitoring**: PSI drift detection, live metrics on real outcomes, webhooks, one-click retraining |
+| Problem | Mass-market no-code tools | Enterprise (DataRobot) | **PredictorLab** |
+|---------|--------------------------|------------------------|------------------|
+| Target leakage | Yellow warning icon (nobody clicks) | Detects it, requires setup | **BLOCK verdict** with explanation in plain language + one-click "Exclude and retrain" |
+| Random split on time-series data | Random split → contamination | Configurable, manual setup | **Automatic out-of-time split** when a date column exists |
+| Bare probability, no uncertainty | "73% churn" (and then what?) | Confidence intervals (model-specific) | **Conformal interval** with coverage guarantee + OOD flag |
+| Threshold at 0.5 or by F1 | "Here's your AUC" | Configurable, manual tuning | **Cost matrix → profit-maximizing threshold**: "At 0.27, treating top-500 customers nets +84,000₽/month" |
+| No actionable next step | SHAP values in a chart | Good, but $$$ | **Counterfactuals**: "Reduce discount by 5% → probability drops 0.81→0.31, ROI: 21,400₽" |
+| Dead model after training | One-and-done | Built-in monitoring | **PSI drift + live metrics + webhooks + one-click retrain** |
+| Price | $99/mo SaaS, data leaves your server | $50k+/year, needs a team | **MIT, self-hosted, Docker** |
 
 ---
 
