@@ -47,7 +47,7 @@ jobs:
         run: npx tsc --noEmit -p tsconfig.json
 
       - name: Unit tests
-        run: python -m pytest tests/unit -q --cov=backend/app/core --cov-report=term --cov-fail-under=60
+        run: python -m pytest tests/unit -q
 
       - name: Property tests
         run: python -m pytest tests/property -q
@@ -60,6 +60,11 @@ jobs:
 
       - name: Security tests
         run: python -m pytest tests/security -q
+
+      - name: Coverage (all test groups combined)
+        run: |
+          python -m pytest tests/unit tests/property tests/integration tests/llm tests/security \
+            -q --cov=backend/app/core --cov-report=term --cov-fail-under=60
 
       - name: Frontend tests (vitest)
         working-directory: frontend

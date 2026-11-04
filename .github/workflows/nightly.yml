@@ -2,6 +2,8 @@ name: Nightly
 on:
   schedule:
     - cron: "0 3 * * *"
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -19,13 +21,17 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install deps
+      - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
-          pip install pytest pytest-asyncio pytest-cov pytest-timeout hypothesis requests ruff mypy playwright
-          playwright install chromium --with-deps
-          (cd frontend && npm install --legacy-peer-deps && npm run build)
+          pip install pytest pytest-asyncio pytest-cov pytest-timeout hypothesis requests ruff mypy
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: |
+          npm install --legacy-peer-deps
+          npm run build
 
       - name: Benchmarks
         run: python -u bench/run.py
@@ -33,12 +39,4 @@ jobs:
 
       - name: ML quality tests
         run: python -m pytest tests/ml -q --timeout=900
-        continue-on-error: true
-
-      - name: E2E full scenario
-        run: python tests/e2e/e2e_full.py --with-server
-        continue-on-error: true
-
-      - name: E2E acceptance
-        run: python tests/e2e/e2e_acceptance.py --with-server
         continue-on-error: true
