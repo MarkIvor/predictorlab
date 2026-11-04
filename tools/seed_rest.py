@@ -1,4 +1,3 @@
-import io
 import sys
 import time
 
@@ -10,6 +9,7 @@ BASE = "http://localhost:8200"
 client = httpx.Client(base_url=BASE, timeout=1200)
 r = client.post("/api/auth/login", json={"email": "admin@predictorlab.io", "password": "predictorlab"})
 assert r.status_code == 200
+
 
 def upload_train(csv, name, target, task="binary"):
     with open(f"demo-data/{csv}", "rb") as f:
@@ -61,6 +61,7 @@ def upload_train(csv, name, target, task="binary"):
     print(f"  trained: {detail['status']} AUC={detail.get('hero_metric', '-')}")
     return detail
 
+
 def set_profit(mid, benefit, action, fn, cap=None):
     body = {"benefit_tp": benefit, "action_cost": action, "fn_cost": fn, "period_label": "holdout = 1 month", "scale": 1}
     if cap:
@@ -69,6 +70,7 @@ def set_profit(mid, benefit, action, fn, cap=None):
     if r.status_code == 200:
         info = r.json()
         print(f"  profit: threshold={info.get('threshold', '-')}, profit={info.get('profit', '-')}")
+
 
 print("3. B2B Churn (leak demo)")
 leaky = upload_train("b2b_leaky.csv", "B2B Churn (Leak Demo)", "churn")
@@ -87,7 +89,7 @@ if telco:
     set_profit(telco["id"], 50000, 2000, 10000, cap=500)
     pub = client.post(f"/api/public/manage/{telco['id']}", json={"enabled": True, "slug": "telco-churn"})
     if pub.status_code == 201:
-        print(f"  public page: /p/telco-churn")
+        print("  public page: /p/telco-churn")
 
 # API-ключ
 print("API key...")

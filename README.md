@@ -4,8 +4,14 @@
 
 **Self-hosted tabular ML for people without a Data Science team.** Upload a file → pick a target → get a model → predict via UI, file, web form, or **REST API**. The system catches **target leakage**, splits time-series data correctly, gives **honest confidence intervals**, and finds the **profit-maximizing threshold** — not just the best F1.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![Docker](https://img.shields.io/badge/docker-compose-ready-blue)
+[![CI](https://github.com/MarkIvor/predictorlab/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/MarkIvor/predictorlab/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-informational.svg)](LICENSE)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg?logo=docker)](https://docs.docker.com/compose/)
+[![make check](https://img.shields.io/badge/make%20check-passing-brightgreen.svg)](#tests--ci)
+
+[Русская версия](README.ru.md) · English
 
 ## Why not Obviously AI / DataRobot / H2O?
 

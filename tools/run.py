@@ -5,6 +5,7 @@
       lint, typecheck, format, security-scan
 """
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -58,13 +59,20 @@ def typecheck() -> int:
     return sh([PY, "-m", "mypy", "backend/app"], timeout=900)
 
 
+def _npm_cmd(args: list[str]) -> list[str]:
+    npm = shutil.which("npm") or shutil.which("npm.cmd") or "npm"
+    if sys.platform == "win32" and not npm.endswith(".cmd"):
+        return ["cmd", "/c", npm, *args]
+    return [npm, *args]
+
+
 def frontend_checks() -> int:
     fe = ROOT / "frontend"
-    code = sh(["cmd", "/c", "npm", "run", "lint"], cwd=fe, timeout=600)
+    code = sh(_npm_cmd(["run", "lint"]), cwd=fe, timeout=600)
     if code == 0:
-        code = sh(["cmd", "/c", "npx", "tsc", "--noEmit", "-p", "tsconfig.json"], cwd=fe, timeout=600)
+        code = sh(_npm_cmd(["exec", "tsc", "--", "--noEmit", "-p", "tsconfig.json"]), cwd=fe, timeout=600)
     if code == 0:
-        code = sh(["cmd", "/c", "npm", "test"], cwd=fe, timeout=900)
+        code = sh(_npm_cmd(["test"]), cwd=fe, timeout=900)
     return code
 
 

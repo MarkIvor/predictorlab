@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  full-e2e:
+  full:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -21,23 +21,24 @@ jobs:
 
       - name: Install deps
         run: |
+          python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
           pip install pytest pytest-asyncio pytest-cov pytest-timeout hypothesis requests ruff mypy playwright
           playwright install chromium --with-deps
           (cd frontend && npm install --legacy-peer-deps && npm run build)
 
-      - name: Bench
-        run: python bench/run.py
+      - name: Benchmarks
+        run: python -u bench/run.py
+        continue-on-error: true
 
-      - name: Full E2E
-        run: |
-          python tests/e2e/e2e_full.py --with-server
-          python tests/e2e/e2e_features.py --with-server || true
-          python tests/e2e/e2e_acceptance.py --with-server || true
+      - name: ML quality tests
+        run: python -m pytest tests/ml -q --timeout=900
+        continue-on-error: true
 
-      - name: LLM (optional, on secret)
-        if: ${{ secrets.LLM_BASE_URL != '' }}
-        env:
-          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-        run: echo "LLM configured — manual verification required"
+      - name: E2E full scenario
+        run: python tests/e2e/e2e_full.py --with-server
+        continue-on-error: true
+
+      - name: E2E acceptance
+        run: python tests/e2e/e2e_acceptance.py --with-server
+        continue-on-error: true

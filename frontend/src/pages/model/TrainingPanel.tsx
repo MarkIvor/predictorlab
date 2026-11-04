@@ -89,7 +89,8 @@ export default function TrainingPanel({
   const [errorMsg, setErrorMsg] = useState('')
   const [stopped, setStopped] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
-  const startTime = useRef(Date.now())
+  const startTimeRef = useRef<number | null>(null)
+  const startTime = { get current() { return startTimeRef.current ??= Date.now() } }
 
   useEffect(() => {
     const timer = setInterval(() => {

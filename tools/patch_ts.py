@@ -11,12 +11,18 @@ p.write_text(s, encoding="utf-8")
 
 p = Path("frontend/src/pages/model/Overview.tsx")
 s = p.read_text(encoding="utf-8")
-s = s.replace("import { AccentTile, BarChart, StatTile, fmtShort } from '../../design/components'", "import { AccentTile, BarChart, fmtShort } from '../../design/components'")
+s = s.replace(
+    "import { AccentTile, BarChart, StatTile, fmtShort } from '../../design/components'",
+    "import { AccentTile, BarChart, fmtShort } from '../../design/components'",
+)
 p.write_text(s, encoding="utf-8")
 
 p = Path("frontend/src/pages/PublicPage.tsx")
 s = p.read_text(encoding="utf-8")
-s = s.replace("import { Globe, Lock, Loader2, TrendingUp, ShieldCheck, Zap } from 'lucide-react'", "import { Lock, Loader2, TrendingUp, ShieldCheck, Zap } from 'lucide-react'")
+s = s.replace(
+    "import { Globe, Lock, Loader2, TrendingUp, ShieldCheck, Zap } from 'lucide-react'",
+    "import { Lock, Loader2, TrendingUp, ShieldCheck, Zap } from 'lucide-react'",
+)
 p.write_text(s, encoding="utf-8")
 
 print("fixed")

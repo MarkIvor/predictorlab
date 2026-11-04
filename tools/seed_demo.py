@@ -1,4 +1,5 @@
 """Загружает демо-датасеты, обучает модели и наполняет ангар."""
+
 import sys
 import time
 
@@ -14,6 +15,7 @@ client = httpx.Client(base_url=BASE, timeout=1200)
 r = client.post("/api/auth/login", json={"email": "admin@predictorlab.io", "password": PASS})
 assert r.status_code == 200, f"Login failed: {r.text}"
 print("✓ Логин ок")
+
 
 def upload_and_train(csv_name: str, model_name: str, target: str, task: str = "binary") -> dict:
     with open(f"{DEMO}/{csv_name}", "rb") as f:
@@ -43,13 +45,20 @@ def upload_and_train(csv_name: str, model_name: str, target: str, task: str = "b
             dedup = client.post(f"/api/datasets/{ds_id}/dedupe")
             if dedup.status_code == 201:
                 print(f"  ⚠ Дубликаты найдены — дедупликация: {dedup.json()['nrows']} строк")
-                r2 = client.post("/api/models", json={
-                    "dataset_id": dedup.json()["id"], "name": model_name, "target_col": target,
-                    **({"event_time_col": event_col} if event_col else {})})
+                r2 = client.post(
+                    "/api/models",
+                    json={"dataset_id": dedup.json()["id"], "name": model_name, "target_col": target, **({"event_time_col": event_col} if event_col else {})},
+                )
                 if r2.status_code == 201:
                     model = r2.json()
                     print(f"  ✓ Модель {model_name} на очищенном датасете, guard={model.get('guard_verdict')}")
-                    excluded = list(set((model.get("excluded_cols") or []) + block_cols + [c["name"] for c in client.get(f"/api/datasets/{dedup.json()['id']}").json()["columns"] if c["type"] == "id"]))
+                    excluded = list(
+                        set(
+                            (model.get("excluded_cols") or [])
+                            + block_cols
+                            + [c["name"] for c in client.get(f"/api/datasets/{dedup.json()['id']}").json()["columns"] if c["type"] == "id"]
+                        )
+                    )
 
     client.patch(f"/api/models/{model['id']}", json={"excluded_cols": list(set(excluded))})
     client.post(f"/api/models/{model['id']}/recheck")

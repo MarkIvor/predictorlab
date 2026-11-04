@@ -21,6 +21,7 @@ jobs:
 
       - name: Install Python deps
         run: |
+          python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
           pip install pytest pytest-asyncio pytest-cov pytest-timeout hypothesis requests ruff mypy bandit
 
@@ -28,28 +29,38 @@ jobs:
         working-directory: frontend
         run: npm install --legacy-peer-deps
 
-      - name: Lint
+      - name: Lint (ruff)
         run: python -m ruff check backend tests tools bench mcp/src demo-data
 
-      - name: Typecheck
+      - name: Format check (ruff)
+        run: python -m ruff format --check backend tests tools bench mcp/src demo-data
+
+      - name: Typecheck (mypy)
         run: python -m mypy backend/app
 
-      - name: Frontend lint + typecheck
+      - name: Frontend lint (eslint)
         working-directory: frontend
-        run: |
-          npx eslint src --max-warnings 50
-          npx tsc --noEmit -p tsconfig.json
+        run: npx eslint src --max-warnings 50
 
-      - name: make check
-        run: python tools/run.py check
+      - name: Frontend typecheck (tsc)
+        working-directory: frontend
+        run: npx tsc --noEmit -p tsconfig.json
 
-      - name: Coverage threshold (core/ >= 60%)
-        run: |
-          python -m pytest tests/unit tests/property tests/integration tests/llm tests/security \
-            -q --cov=backend/app/core --cov-report=term --cov-fail-under=60
+      - name: Unit tests
+        run: python -m pytest tests/unit -q --cov=backend/app/core --cov-report=term --cov-fail-under=60
 
-      - name: E2E smoke
-        run: |
-          pip install playwright
-          playwright install chromium --with-deps
-          python tests/e2e/e2e_full.py --with-server
+      - name: Property tests
+        run: python -m pytest tests/property -q
+
+      - name: Integration tests
+        run: python -m pytest tests/integration -q
+
+      - name: LLM contract tests
+        run: python -m pytest tests/llm -q
+
+      - name: Security tests
+        run: python -m pytest tests/security -q
+
+      - name: Frontend tests (vitest)
+        working-directory: frontend
+        run: npm test

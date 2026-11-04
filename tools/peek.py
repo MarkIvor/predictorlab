@@ -1,4 +1,5 @@
 import sys
+
 import httpx
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
