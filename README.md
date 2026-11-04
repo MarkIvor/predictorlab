@@ -1,130 +1,177 @@
 # PredictorLab
 
-> Загрузи данные. Скажи, что хочешь предсказать. Получи честную модель, прогноз в рублях и API, который работает через 5 минут.
+> Load your data. Say what you want to predict. Get an honest model, a forecast in rubles, and an API — all in 5 minutes.
 
-**Self-hosted табличный ML для людей без Data Science.** Сценарий как у Obviously AI — загрузил файл → выбрал цель → получил модель → предсказываешь через UI, файл или REST API. Отличие: система ловит утечки целевой переменной, даёт честные доверительные интервалы, режет выборку по времени и подбирает порог отсечения **по деньгам**, а не по F1.
+**Self-hosted tabular ML for people without a Data Science team.** Upload a file → pick a target → get a model → predict via UI, file, web form, or **REST API**. The system catches **target leakage**, splits time-series data correctly, gives **honest confidence intervals**, and finds the **profit-maximizing threshold** — not just the best F1.
 
-```
- UI :3000 ████ HTTP   API :8000 ████ REST /api/v1   MCP :8100
-    │                        │                        │
-    └────────────────────────┼────────────────────────┘
-                             ▼
-            ┌──────────────────────────────────────┐
-            │ FastAPI + asyncio-очередь + ProcessPool │
-            ├──────────────────────────────────────┤
-            │ Инжест: CSV/XLSX/Parquet, БД (read-only) │
-            │ Feature Builder: point-in-time витрины   │
-            │ Leakage Guard → сплиты → обучение        │
-            │ CatBoost/LightGBM + Optuna + калибровка  │
-            │ Conformal + OOD + SHAP + профит + CF      │
-            │ Мониторинг: PSI-дрейф, live-метрики        │
-            ├──────────────────────────────────────┤
-            │ DuckDB (данные) · SQLite (метаданные)    │
-            │ storage/models/{id}/v{n}/ — артефакты    │
-            └──────────────────────────────────────┘
-```
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Docker](https://img.shields.io/badge/docker-compose-ready-blue)
 
-## Откуда задача
+## Why not Obviously AI / DataRobot / H2O?
 
-Ivor's Lab собрал PredictorLab после DataSearcher: поиск по данным есть, а честного табличного ML для команды без DS — нет. ТЗ v1.1 (владелец продукта — Марк Ивор) требовало снять три главные боли «ML для бизнеса»: утечки таргета, дающие фальшивые 99% точности; пороги, подобранные по метрикам вместо денег; мёртвые модели, которые никто не переобучает.
-
-## Почему не Obviously AI / DataRobot / H2O
-
-| | Obviously 1.0 | DataRobot / H2O | PredictorLab |
+| | Obviously AI | DataRobot / H2O | **PredictorLab** |
 |---|---|---|---|
-| Утечка таргета | Не видит — «99% точности» | Частично | **Leakage Guard: BLOCK + объяснение по-русски** |
-| Доверительный интервал | Вероятность и всё | Confidence из модели | **Split conformal: интервал/множество с гарантией покрытия + OOD-флаг** |
-| Порог решения | 0.5 или F1 | Настройка вручную | **Матрица стоимостей → порог по максимуму прибыли, top-K по ёмкости** |
-| Сплит на временных данных | Случайный | Настройка вручную | **Автоматический out-of-time + group split по сущности** |
-| Витрина из нескольких таблиц | Нужен готовый плоский файл | ETL отдельно | **Feature Builder: point-in-time SQL из вашей БД, SQL всегда виден** |
-| Что делать с объектом | — | — | **Контрфактуалы: минимальное по стоимости действие + плейбук** |
-| Self-hosted и офлайн | Нет | Да, но тяжело | **Docker, полная работа без LLM и без интернета** |
-| Цена | SaaS | $$$ | **MIT** |
+| Target leakage | Doesn't detect it — "99% accuracy" | Partial | **Leakage Guard: BLOCK + explanation in plain English/Russian** |
+| Confidence interval | Just probability | Model-specific | **Conformal prediction: interval/set with coverage guarantee + OOD flag** |
+| Decision threshold | 0.5 or F1 | Manual tuning | **Cost matrix → profit-maximizing threshold, top-K capacity** |
+| Time-series split | Random | Manual | **Automatic out-of-time split + group split** |
+| Feature store | Need flat file | Separate ETL | **Built-in Point-in-Time Feature Builder from your DB** |
+| What to do with a prediction | — | — | **Counterfactuals: minimum-cost action + playbook** |
+| Self-hosted & offline | No | Yes, but heavy | **Docker, works fully without LLM or internet** |
+| Price | SaaS | $$$$ | **MIT** |
 
-## Как это выглядит
+## How it looks
 
-Дизайн-система — Mono Bento Instrument: приборная панель, моноширинный шрифт, крупные цифры, один холодный акцент.
+| | |
+|---|---|
+| ![Login](docs/screenshots/01_login.png) | ![Hangar](docs/screenshots/02_hangar.png) |
+| *Login page* | *Model hangar — AUC, profit, guard verdict per tile* |
+| ![Overview](docs/screenshots/03_overview.png) | ![What-If](docs/screenshots/04_whatif.png) |
+| *Overview: "What does this mean?" + calibration + drivers* | *What-If: live sliders, interval recalculates* |
+| ![Profit](docs/screenshots/05_profit.png) | ![Predict](docs/screenshots/06_predict.png) |
+| *Profit: cost matrix → threshold by money, not F1* | *Single prediction: probability + interval + reasons* |
+| ![Share](docs/screenshots/07_api_share.png) | ![Card](docs/screenshots/08_model_card.png) |
+| *Share predictions: web form, API key, batch — 3 paths* | *Model Card: auto-generated, exportable* |
+| ![Wizard](docs/screenshots/09_wizard_data.png) | ![Admin](docs/screenshots/10_admin.png) |
+| *5-step wizard: Data → Target → Health → Train → Result* | *Admin: users, LLM, connections, webhooks* |
 
-- **Ангар моделей** — плитки моделей с hero-метрикой, прибылью за период и вердиктом Leakage Guard.
-- **Мастер 5 шагов** — `DATA → TARGET → HEALTH → TRAIN → RESULT`: загрузка, цель словами или колонкой, сетка проверок Leakage Guard, живой лидерборд обучения (SSE) с RingGauge прогресса.
-- **Страница модели** — `OVERVIEW · DRIVERS · WHAT-IF · PROFIT · PREDICT · API · CARD · ACTIONS · MONITOR`.
-
-Скриншоты — в [`docs/screenshots/`](docs/screenshots/).
-
-## Leakage Guard: как выглядит спасённый проект
-
-Загружаем синтетический B2B с подставой — колонки `cancel_date` (заполнена только у ушедших) и `final_status`:
+## How it works
 
 ```
-[x] Признак «cancel_date» почти идеально предсказывает таргет (AUC 0.998). Похоже на утечку: значение известно только после события
-[x] Название колонки «final_status» похоже на признак, который становится известен только после события
-[x] Колонка «cancel_date» содержит даты позже времени события (100% строк) — признак из будущего
-
-Вердикт: BLOCK — результаты показаны не будут
-[ИСКЛЮЧИТЬ (cancel_date, final_status) И ПЕРЕОБУЧИТЬ]
+ UI :3000 ████  REST API :8000 ████  MCP :8100
+    │                     │                     │
+    └─────────────────────┼─────────────────────┘
+                          ▼
+          ┌────────────────────────────────────┐
+          │  FastAPI + asyncio jobs + SSE      │
+          ├────────────────────────────────────┤
+          │  Ingest: CSV/XLSX/Parquet, PII     │
+          │  Feature Builder: point-in-time    │
+          │  Leakage Guard → splits → training  │
+          │  CatBoost/LightGBM + Optuna        │
+          │  Conformal + OOD + SHAP + Profit    │
+          │  Monitoring: PSI drift + webhooks   │
+          ├────────────────────────────────────┤
+          │  DuckDB (data) · SQLite (metadata)  │
+          │  storage/models/{id}/v{n}/ artifacts│
+          └────────────────────────────────────┘
 ```
 
-После «Исключить и переобучить» ROC-AUC честно опускается с ~0.99 до ~0.85 — это и есть настоящая модель, а не артефакт утечки. Опытный пользователь может снять блок осознанно (чекбокс) — решение фиксируется в Model Card.
+## Leakage Guard: how it saves your project
 
-## API за 60 секунд
+Upload a dataset with a trap — a `cancel_date` column filled only for churned customers:
+
+```
+[x] «cancel_date» almost perfectly predicts the target (AUC 0.998) — looks like leakage
+[x] «final_status» name resembles a post-event feature — flagged by suspicious-name check
+[x] «cancel_date» contains dates after the event time (100% of rows) — feature from the future
+
+Verdict: BLOCK — results will not be shown
+[EXCLUDE (cancel_date, final_status) AND RETRAIN]
+```
+
+After "Exclude and retrain", ROC-AUC drops from ~0.99 to ~0.85 — that's the **real** model, not a leakage artifact. Advanced users can override the block (checkbox) — the decision is recorded in the Model Card.
+
+## Quick Start
 
 ```bash
-# 1. Ключ создаётся в UI (вкладка API): показывается один раз, хранится хэшем
+git clone https://github.com/MarkIvor/predictorlab.git
+cd predictorlab
+cp .env.example .env    # change ADMIN_EMAIL / ADMIN_PASSWORD / secrets
+docker compose up -d
+# UI: http://localhost:3000  ·  API: http://localhost:8000  ·  /docs
+```
+
+**Dev without Docker:**
+```bash
+python -m venv .venv && .venv/bin/pip install -r backend/requirements.txt
+cd backend && uvicorn app.main:app --port 8000
+cd frontend && npm install && npm run dev
+```
+
+Then: log in with the default admin (password change required on first login), upload `demo-data/telco.csv` or `demo-data/b2b_leaky.csv` (with the leak — check Leakage Guard), pick a target, click **Quick Train**.
+
+**Works fully offline and without LLM.** When `LLM_BASE_URL` is empty, LLM features are hidden — training and predictions don't depend on external services. LLM (any OpenAI-compatible API) is used only for texts, feature suggestions, and semantic column checks — raw data rows never leave the system.
+
+## Predict in 60 seconds
+
+```bash
+# 1. Create a key in the UI (API tab): shown once, stored as hash
 export KEY=pl_live_...
 
-# 2. Схема модели — что слать
+# 2. Get the schema
 curl http://localhost:8000/api/v1/models/1/schema -H "Authorization: Bearer $KEY"
 
-# 3. Прогноз с причинами
+# 3. Predict with reasons
 curl -X POST http://localhost:8000/api/v1/models/1/predict \
   -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
   -d '{"data": [{"days_since_last_order": 75, "satisfaction": 2.1}], "include": ["reasons"]}'
 ```
 
-Ответ — по контракту: вероятность, решение по порогу из PROFIT, конформальное множество, флаг OOD и топ-причины по-русски. Сниппеты под конкретную модель (curl / Python / JS / **1С**) генерируются на вкладке API и выполняются без правок. Пакетный прогноз: файл → `job_id` → CSV/XLSX с `prediction, probability, interval_low, interval_high, ood`.
+Response: probability, decision by your profit threshold, conformal set, OOD flag, and top reasons in plain language. Snippets for curl / Python / JS / **1C** are auto-generated per model schema and work without edits.
 
-## MCP
+## Share predictions
 
-`predictorlab-mcp` — Model Context Protocol-сервер для Claude Desktop, Cursor и любого MCP-клиента:
+Three ways, one click each:
 
-```
+1. **Web form** — create a link; anyone can predict without login. Optional password protection.
+2. **API key** — for developers; snippets in curl, Python, JavaScript, and 1C + sandbox.
+3. **Batch** — upload a CSV → background job → download predictions with intervals.
+
+## MCP Server
+
+```bash
 predictorlab-mcp --transport stdio --url http://localhost:8000 --api-key pl_live_...
 ```
 
-Тулы: `list_models`, `get_model_schema`, `predict`, `explain`, `what_if`, `counterfactual`, `get_model_card`, `get_drift_status`. Обучение через MCP — за флагом `MCP_ALLOW_TRAIN`. Конфиги для Claude Desktop и Cursor генерируются в админке с кнопкой «Скопировать».
+Tools: `list_models`, `get_model_schema`, `predict`, `explain`, `what_if`, `counterfactual`, `get_model_card`, `get_drift_status`. Training via MCP is behind a flag.
 
-## Быстрый старт
+## Benchmarks
+
+| Operation | Budget | Measured |
+|---|---|---|
+| `predict`, 1 record | < 300 ms | **62 ms** |
+| `predict` + SHAP reasons | < 1 s | **79 ms** |
+| Batch 10k rows | < 2 min | **14 s** |
+| Train quick, 50k × 50 | ~2 min | **155 s** |
+| Counterfactual, 1 object | < 10 s | **6.4 s** |
+
+Full results: [BENCHMARKS.md](BENCHMARKS.md) · Run: `make bench`
+
+## Honesty & Limitations
+
+- **Counterfactuals ≠ causality.** "Reduce discount by 5% → probability drops to 0.31" is the model's response to a feature change, not a proven causal effect.
+- **Conformal guarantee is marginal.** 90% coverage holds on average, not for every single object. For imbalanced classes, set coverage may exceed α — that's a property of the method (see DECISIONS.md D-12).
+- **Small datasets give wide intervals.** 200 rows → interval is almost useless. We show this honestly, not hide it.
+- **Profit in rubles is based on your assumptions.** All formulas and coefficients are expandable; the "+1.84M ₽" figure is only as good as your cost/benefit estimates.
+- **LLM never affects the numbers.** Training, probabilities, intervals, thresholds, and profit are deterministic code. LLM only writes texts — and those pass a number validator.
+- **Time-series forecasting (v0.3)** is pragmatic: lags + rolling stats + calendar, one series at a time. Strong exotic seasonality is not modeled (DECISIONS.md D-10).
+
+## Tests & CI
 
 ```bash
-cp .env.example .env          # поменяйте ADMIN_EMAIL/ADMIN_PASSWORD и секреты
-docker compose up -d
-# UI: http://localhost:3000  ·  API: http://localhost:8000  ·  /docs
+make check    # lint + typecheck + unit + property + integration + llm + security + frontend (~2 min)
+make test-e2e # Playwright end-to-end
+make test-ml  # ML quality tests (golden datasets, determinism, invariants)
+make bench    # performance benchmarks
 ```
 
-Дальше: войдите дефолтным админом (при первом входе пароль меняется), загрузите `demo-data/telco.csv` или `demo-data/b2b_leaky.csv` (с подставой — проверьте Leakage Guard), выберите таргет, нажмите QUICK. Демо-данные и генератор синтетики — в `demo-data/`.
+- **ruff** (lint + format), **mypy** (strict for `core/`), **pytest** + **hypothesis** (property-based)
+- **vitest** + **eslint** + **tsc** for frontend
+- **CI**: GitHub Actions — lint → typecheck → `make check` → coverage threshold → e2e smoke
+- **Nightly**: full e2e, benchmarks, ML tests
 
-**Без Docker (dev):** `python -m venv .venv && .venv/Scripts/pip install -r backend/requirements.txt` → `uvicorn app.main:app` из `backend/`, фронтенд — `npm run dev` из `frontend/`.
+## Tech Stack
 
-Полная работа **офлайн и без LLM**: при пустом `LLM_BASE_URL` LLM-функции скрыты, обучение и прогнозы не зависят от внешних сервисов. LLM (любой OpenAI-совместимый API) подключается в админке и используется только для текстов, предложений фичей и семантической проверки утек — сырые строки данных в неё не уходят, а числа в LLM-текстах Model Card проверяются валидатором против посчитанных значений.
+| Layer | |
+|---|---|
+| Backend | Python 3.12, FastAPI, Pydantic v2, SSE, asyncio jobs |
+| ML | scikit-learn, CatBoost, LightGBM, Optuna, SHAP, own split-conformal |
+| Data | DuckDB (data), SQLite (metadata), PostgreSQL/MySQL/ClickHouse/SQLite connectors (read-only) |
+| Frontend | React 19, TypeScript, Vite, Recharts, CSS custom properties |
+| MCP | FastMCP (stdio + HTTP, Bearer auth) |
+| Infra | Docker, docker-compose, GitHub Actions, pre-commit |
 
-## Бенчмарки
+## License
 
-Измеренные бюджеты производительности (predict, SHAP-причины, batch 10k, обучение quick/full, контрфактуалы) — в [BENCHMARKS.md](BENCHMARKS.md). Замер делает `python bench/run.py`.
-
-## Ограничения и честность
-
-- **Контрфактуалы ≠ причинность.** «Снизить discount на 5% → вероятность упадёт до 0.31» — это ответ модели на изменение признака, а не доказанный причинный эффект. Модель не знает, что скидка зависит от маржи.
-- **Конформальная гарантия — маргинальная.** Покрытие 90% достигается в среднем по потоку данных, а не для каждого объекта; для дисбалансированных классов покрытие(prediction sets) может быть выше α — это свойство метода, не баг (см. DECISIONS.md D-12).
-- **Маленькие датасеты дают широкие интервалы.** 200 строк — интервал почти бесполезен; это честно показывается, а не прячется.
-- **Прибыль в рублях — на ваших допущениях.** Формулы и все коэффициенты раскрываются по клику; цифра «+1.84M ₽» верна ровно настолько, насколько верны ваши оценки выгоды и потерь.
-- **LLM не влияет на цифры.** Обучение, вероятности, интервалы, порог и прибыль — детерминированный код. LLM пишет только тексты и проходит валидатор чисел.
-- **Прогноз временных рядов** (v0.3) — прагматичный: лаги + скользящие статистики + календарь, одна серия за раз; сильная экзотическая сезонность не моделируется (см. DECISIONS.md D-10).
-- **TabPFN** — опциональная зависимость (`pip install predictorlab[tabpfn]`, флаг `TABPFN_ENABLED`), лицензия требует атрибуции — см. их проект.
-
-## Роли и безопасность
-
-`admin` (всё) · `builder` (модели, свои ключи) · `viewer` (просмотр и ручные прогнозы) · API-ключи `pl_live_…` (только inference, хэш в БД, показ один раз, отзыв, доступ к выбранным моделям). Подключения к БД — строго read-only через sql_guard. ПДн (email, телефон РФ, ИНН, СНИЛС, паспорт, карта) детектятся при загрузке и **исключаются из обучения по умолчанию**, в логах маскируются (TTL настраивается). Артефакты моделей загружаются только из собственного `storage/`; при заданном `ARTIFACT_SIGNING_KEY` подписываются HMAC и проверяются при загрузке — подменённый файл не загрузится.
-
-## Лицензия
-
-MIT — как все репозитории Ivor's Lab. Telco Customer Churn © IBM (Apache 2.0, зеркало), California Housing — из курса A. Géron; оба датасета лежат в `demo-data/` для офлайн-демо.
+MIT — like all Ivor's Lab repositories. Telco Customer Churn © IBM (Apache 2.0), California Housing from A. Géron's course; both datasets included in `demo-data/` for offline demos.
